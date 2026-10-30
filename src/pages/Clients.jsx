@@ -12,10 +12,12 @@ import {
   SearchField,
   StatusPill,
 } from "../components/ui";
-import { includesQuery, usePaged, useResource } from "../lib";
+import { blankIssues, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
+import { useToast } from "../toast";
 
 function ClientForm({ onClose, onCreated }) {
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -24,10 +26,19 @@ function ClientForm({ onClose, onCreated }) {
     address: "",
     gst_number: "",
   });
-  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setIssues((current) => ({ ...current, [key]: "" }));
+  };
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([
+      ["name", form.name, "Enter the client name"],
+    ]);
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -51,9 +62,9 @@ function ClientForm({ onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label="Client name">
-        <input value={form.name} onChange={set("name")} required />
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <Field label="Client name" error={issues.name}>
+        <input value={form.name} onChange={set("name")} />
       </Field>
       <Field label="Mobile">
         <input value={form.mobile} onChange={set("mobile")} />
@@ -75,6 +86,7 @@ function ClientForm({ onClose, onCreated }) {
 
 export default function Clients() {
   const [params] = useSearchParams();
+  const toast = useToast();
   const [query, setQuery] = useState(params.get("q") || "");
   const [open, setOpen] = useState(false);
   const { data, loading, error, reload } = useResource(async () => {
@@ -89,12 +101,13 @@ export default function Clients() {
     [data, query]
   );
   const pager = usePaged(filtered);
+  const focus = useSearchFocus(params, filtered, pager.setPage);
 
   useEffect(() => setQuery(params.get("q") || ""), [params]);
 
   return (
     <section>
-      <PageHeader title="CRM" subtitle="Clients billed for trips and shipments.">
+      <PageHeader title="Clients" subtitle="Clients billed for trips and shipments.">
         <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
           New Client
         </button>
@@ -108,12 +121,15 @@ export default function Clients() {
         {loading ? <p className="muted pad">Loading clients...</p> : (
           <DataTable
             rows={pager.rows}
-            empty="No clients match this search."
+            highlightId={focus}
+            empty={query ? "No clients match this search." : "No clients yet."}
+            emptyAction={query ? null : { label: "New Client", onClick: () => setOpen(true) }}
             columns={[
               { key: "name", label: "Name", render: (row) => row.name },
               { key: "mobile", label: "Mobile", render: (row) => row.mobile || "—" },
               { key: "email", label: "Email", render: (row) => row.email || "—" },
               { key: "gst", label: "GST", render: (row) => row.gst_number || "—" },
+              { key: "address", label: "Address", render: (row) => row.address || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
             ]}
           />
@@ -126,6 +142,7 @@ export default function Clients() {
             onClose={() => setOpen(false)}
             onCreated={() => {
               setOpen(false);
+              toast("Client added");
               reload();
             }}
           />

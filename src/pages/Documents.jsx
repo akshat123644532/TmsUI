@@ -13,7 +13,8 @@ import {
   StatusPill,
   Tabs,
 } from "../components/ui";
-import { formatDate, includesQuery, usePaged, useResource } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, usePaged, useResource } from "../lib";
+import { useToast } from "../toast";
 
 async function loadOwnedDocs(people, path, label) {
   const groups = await Promise.all(
@@ -36,6 +37,7 @@ async function loadOwnedDocs(people, path, label) {
 
 function DocumentForm({ kind, owners, onClose, onCreated }) {
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     owner_id: owners[0]?.id ? String(owners[0].id) : "",
@@ -45,10 +47,20 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
     issue_date: "",
     expiry_date: "",
   });
-  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setIssues((current) => ({ ...current, [key]: "" }));
+  };
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([
+      ["owner_id", form.owner_id, "Select who this document belongs to"],
+      ["document_type", form.document_type, "Enter the document type"],
+    ]);
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -78,9 +90,9 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label={kind === "vehicle" ? "Vehicle" : kind === "driver" ? "Driver" : "Helper"}>
-        <Select value={form.owner_id} onChange={set("owner_id")} required>
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <Field label={kind === "vehicle" ? "Vehicle" : kind === "driver" ? "Driver" : "Helper"} error={issues.owner_id}>
+        <Select value={form.owner_id} onChange={set("owner_id")}>
           <option value="">Select</option>
           {owners.map((owner) => (
             <option key={owner.id} value={owner.id}>
@@ -89,8 +101,8 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Document type">
-        <input value={form.document_type} onChange={set("document_type")} required placeholder="RC, INSURANCE, LICENSE" />
+      <Field label="Document type" error={issues.document_type}>
+        <input value={form.document_type} onChange={set("document_type")} placeholder="RC, INSURANCE, LICENSE" />
       </Field>
       <Field label="Number">
         <input value={form.document_number} onChange={set("document_number")} />
@@ -111,6 +123,7 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
 }
 
 export default function Documents() {
+  const toast = useToast();
   const [tab, setTab] = useState("vehicle");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -152,7 +165,7 @@ export default function Documents() {
 
   return (
     <section>
-      <PageHeader title="Documentation" subtitle="Vehicle, driver, and helper papers, including expiry dates.">
+      <PageHeader title="Documents" subtitle="vehicle_documents, driver_documents, and helper_documents.">
         <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
           Add Document
         </button>
@@ -178,7 +191,8 @@ export default function Documents() {
         {loading ? <p className="muted pad">Loading documents...</p> : (
           <DataTable
             rows={pager.rows}
-            empty="No documents in this folder."
+            empty={query ? "No documents match this search." : "No documents in this folder."}
+            emptyAction={query ? null : { label: "Add Document", onClick: () => setOpen(true) }}
             columns={[
               { key: "owner", label: "Owner", render: (row) => row.owner },
               { key: "type", label: "Type", render: (row) => row.document_type },
@@ -198,6 +212,7 @@ export default function Documents() {
             onClose={() => setOpen(false)}
             onCreated={() => {
               setOpen(false);
+              toast("Document saved");
               reload();
             }}
           />

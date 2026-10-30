@@ -13,10 +13,12 @@ import {
   StatusPill,
   Tabs,
 } from "../components/ui";
-import { includesQuery, usePaged, useResource } from "../lib";
+import { blankIssues, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
+import { useToast } from "../toast";
 
 function PersonForm({ kind, onClose, onCreated }) {
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -25,10 +27,22 @@ function PersonForm({ kind, onClose, onCreated }) {
     address: "",
     license_number: "",
   });
-  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setIssues((current) => ({ ...current, [key]: "" }));
+  };
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([
+      ["name", form.name, "Enter a name"],
+      ["mobile", form.mobile, "Enter a mobile number"],
+    ]);
+    const digits = form.mobile.replace(/\D/g, "");
+    if (!nextIssues.mobile && digits.length < 10) nextIssues.mobile = "Enter at least 10 digits";
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -54,12 +68,12 @@ function PersonForm({ kind, onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label="Name">
-        <input value={form.name} onChange={set("name")} required />
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <Field label="Name" error={issues.name}>
+        <input value={form.name} onChange={set("name")} />
       </Field>
-      <Field label="Mobile">
-        <input value={form.mobile} onChange={set("mobile")} required />
+      <Field label="Mobile" error={issues.mobile}>
+        <input value={form.mobile} onChange={set("mobile")} />
       </Field>
       <Field label="Email">
         <input type="email" value={form.email} onChange={set("email")} />
@@ -80,6 +94,7 @@ function PersonForm({ kind, onClose, onCreated }) {
 
 export default function Staff() {
   const [params] = useSearchParams();
+  const toast = useToast();
   const [tab, setTab] = useState("drivers");
   const [query, setQuery] = useState(params.get("q") || "");
   const [open, setOpen] = useState(false);
@@ -102,12 +117,13 @@ export default function Staff() {
     [rows, query]
   );
   const pager = usePaged(filtered);
+  const focus = useSearchFocus(params, filtered, pager.setPage);
 
   useEffect(() => setQuery(params.get("q") || ""), [params]);
 
   return (
     <section>
-      <PageHeader title="Staff Management" subtitle="Drivers and helpers assigned to your fleet.">
+      <PageHeader title="Drivers & Helpers" subtitle="People assigned to vehicles and trips.">
         <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
           {tab === "drivers" ? "New Driver" : "New Helper"}
         </button>
@@ -132,7 +148,9 @@ export default function Staff() {
         {loading ? <p className="muted pad">Loading staff...</p> : (
           <DataTable
             rows={pager.rows}
-            empty={`No ${tab} match this search.`}
+            highlightId={focus}
+            empty={query ? `No ${tab} match this search.` : `No ${tab} yet.`}
+            emptyAction={query ? null : { label: tab === "drivers" ? "New Driver" : "New Helper", onClick: () => setOpen(true) }}
             columns={[
               { key: "name", label: "Name", render: (row) => row.name },
               { key: "mobile", label: "Mobile", render: (row) => row.mobile || "—" },
@@ -151,6 +169,7 @@ export default function Staff() {
             onClose={() => setOpen(false)}
             onCreated={() => {
               setOpen(false);
+              toast(tab === "drivers" ? "Driver added" : "Helper added");
               reload();
             }}
           />

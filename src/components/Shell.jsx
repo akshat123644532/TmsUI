@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { api, pingApi } from "../api";
+import { api, DEMO_TOKEN, getToken, pingApi } from "../api";
 import { useAuth } from "../auth";
 import { initials, roleLabel } from "../lib";
 import { Icon } from "./Icons";
@@ -8,15 +8,24 @@ import { Modal } from "./ui";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: "grid" },
-  { to: "/loads", label: "Load Management", icon: "box" },
-  { to: "/routes", label: "Route Planning", icon: "pin" },
-  { to: "/staff", label: "Staff Management", icon: "users" },
-  { to: "/documents", label: "Documentation", icon: "file" },
-  { to: "/invoices", label: "Invoicing", icon: "invoice" },
-  { to: "/clients", label: "CRM", icon: "crm" },
-  { to: "/fleet", label: "Dispatcher/Carrier", icon: "radio" },
-  { to: "/outlook", label: "Carrier Outlook", icon: "globe" },
+  { to: "/users", label: "Users", icon: "gear", admin: true },
+  { to: "/fleet", label: "Vehicles", icon: "truck" },
+  { to: "/staff", label: "Drivers & Helpers", icon: "users" },
+  { to: "/loads", label: "Bilty", icon: "box" },
+  { to: "/routes", label: "Trips", icon: "pin" },
+  { to: "/expenses", label: "Trip Expenses", icon: "rupee" },
+  { to: "/settlements", label: "Trip Settlement", icon: "check" },
+  { to: "/clients", label: "Clients", icon: "crm" },
+  { to: "/invoices", label: "Invoices", icon: "invoice" },
+  { to: "/payments", label: "Payments", icon: "radio" },
+  { to: "/reports", label: "Reports", icon: "download" },
+  { to: "/documents", label: "Documents", icon: "file" },
 ];
+
+const COMPANY_NAMES = {
+  1: "sheel",
+  2: "TMS Demo Company",
+};
 
 export default function Shell() {
   const { user, logout, refreshUser } = useAuth();
@@ -31,10 +40,30 @@ export default function Shell() {
   const [alerts, setAlerts] = useState([]);
   const [alertNote, setAlertNote] = useState("");
   const [help, setHelp] = useState("");
+  const [companyName, setCompanyName] = useState(
+    () => user?.company_name || COMPANY_NAMES[user?.company_id] || "Your company"
+  );
+  const demo = getToken() === DEMO_TOKEN;
 
   useEffect(() => {
     refreshUser().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setCompanyName(user?.company_name || COMPANY_NAMES[user?.company_id] || "Your company");
+    let live = true;
+
+    api("/api/companies", { auth: false })
+      .then((data) => {
+        const match = (data.companies || []).find((company) => String(company.id) === String(user?.company_id));
+        if (live && match?.name) setCompanyName(match.name);
+      })
+      .catch(() => {});
+
+    return () => {
+      live = false;
+    };
+  }, [user]);
 
   useEffect(() => {
     let live = true;
@@ -77,32 +106,68 @@ export default function Shell() {
 
         for (const row of bilties.bilties || []) {
           if (String(row.bilty_number || "").toLowerCase().includes(q)) {
-            next.push({ id: `b-${row.id}`, type: "Load", label: row.bilty_number, to: "/loads" });
+            next.push({
+              id: `b-${row.id}`,
+              recordId: row.id,
+              type: "Bilty",
+              label: row.bilty_number,
+              query: row.bilty_number,
+              to: "/loads",
+            });
           }
         }
 
         for (const row of trips.trips || []) {
+          const queryText = `${row.source || ""} ${row.destination || ""}`.trim();
           const label = `${row.source || ""} → ${row.destination || ""}`;
-          if (label.toLowerCase().includes(q) || String(row.status || "").toLowerCase().includes(q)) {
-            next.push({ id: `t-${row.id}`, type: "Trip", label, to: "/routes" });
+          if (label.toLowerCase().includes(q) || queryText.toLowerCase().includes(q) || String(row.status || "").toLowerCase().includes(q)) {
+            next.push({
+              id: `t-${row.id}`,
+              recordId: row.id,
+              type: "Trip",
+              label,
+              query: queryText,
+              to: "/routes",
+            });
           }
         }
 
         for (const row of clients.clients || []) {
           if (String(row.name || "").toLowerCase().includes(q)) {
-            next.push({ id: `c-${row.id}`, type: "Client", label: row.name, to: "/clients" });
+            next.push({
+              id: `c-${row.id}`,
+              recordId: row.id,
+              type: "Client",
+              label: row.name,
+              query: row.name,
+              to: "/clients",
+            });
           }
         }
 
         for (const row of vehicles.vehicles || []) {
           if (String(row.registration_no || "").toLowerCase().includes(q)) {
-            next.push({ id: `v-${row.id}`, type: "Vehicle", label: row.registration_no, to: "/fleet" });
+            next.push({
+              id: `v-${row.id}`,
+              recordId: row.id,
+              type: "Vehicle",
+              label: row.registration_no,
+              query: row.registration_no,
+              to: "/fleet",
+            });
           }
         }
 
         for (const row of drivers.drivers || []) {
           if (String(row.name || "").toLowerCase().includes(q)) {
-            next.push({ id: `d-${row.id}`, type: "Driver", label: row.name, to: "/staff" });
+            next.push({
+              id: `d-${row.id}`,
+              recordId: row.id,
+              type: "Driver",
+              label: row.name,
+              query: row.name,
+              to: "/staff",
+            });
           }
         }
 
@@ -168,7 +233,7 @@ export default function Shell() {
         </div>
 
         <nav className="nav">
-          {NAV.map((item) => (
+          {NAV.filter((item) => !item.admin || ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(user?.user_type)).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -218,7 +283,7 @@ export default function Shell() {
                     onClick={() => {
                       setQuery("");
                       setHits([]);
-                      navigate(`${hit.to}?q=${encodeURIComponent(hit.label)}`);
+                      navigate(`${hit.to}?q=${encodeURIComponent(hit.query || hit.label)}&focus=${hit.recordId}`);
                     }}
                   >
                     <strong>{hit.label}</strong>
@@ -230,6 +295,11 @@ export default function Shell() {
           </label>
 
           <div className="top-spacer" />
+
+          <div className="company-chip">
+            <small>Company</small>
+            <strong>{companyName}</strong>
+          </div>
 
           <div className={`online-pill${online ? "" : " off"}`}>
             <i className="dot" />
@@ -268,7 +338,7 @@ export default function Shell() {
                 <p>{user?.name || "Signed in"}</p>
                 <p className="muted">{user?.email}</p>
                 <p className="muted">{user?.mobile || "No mobile"}</p>
-                <p className="muted">Company #{user?.company_id || "—"}</p>
+                <p className="muted">{companyName}</p>
               </div>
             ) : null}
           </div>
@@ -288,8 +358,8 @@ export default function Shell() {
 
         <footer className="footer">
           <div className="server-line">
-            <i className={`dot${online ? "" : " off"}`} />
-            <span>SERVER: LOCAL</span>
+            <i className={`dot${demo ? " demo" : online ? "" : " off"}`} />
+            <span>{demo ? "Demo mode" : online ? "API online" : "API offline"}</span>
             <span className="muted">API v1.0.0</span>
           </div>
           <div className="footer-links">
@@ -308,9 +378,9 @@ export default function Shell() {
         <Modal title={help === "docs" ? "Documentation" : "Support"} onClose={() => setHelp("")}>
           {help === "docs" ? (
             <div className="help-copy">
-              <p>This desk reads your TMS API on port 5000.</p>
-              <p>Load Management is bilties. Route Planning is trips. Dispatcher covers vehicles, types, and crew assignments.</p>
-              <p>Invoices start as drafts. Mark one sent, record a payment, then confirm it so the balance updates.</p>
+              <p>This desk follows the TMS tables: vehicles, drivers, helpers, bilties, trips, expenses, settlements, clients, invoices, and payments.</p>
+              <p>Trip expenses and advances sit on a trip. Settlements compare approved advances against expenses.</p>
+              <p>Invoices start as drafts. Send one, record a payment, then confirm it so the balance updates.</p>
             </div>
           ) : (
             <div className="help-copy">

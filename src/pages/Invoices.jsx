@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import {
   Banner,
@@ -10,22 +11,14 @@ import {
   Pager,
   SearchField,
   Select,
-  StatusPill,
+  StatusNext,
 } from "../components/ui";
-import { formatDate, includesQuery, money, num, today, usePaged, useResource } from "../lib";
-
-const NEXT = {
-  DRAFT: ["SENT", "CANCELLED"],
-  SENT: ["PARTIAL", "PAID", "CANCELLED"],
-  PARTIAL: ["PAID", "CANCELLED"],
-  PAID: ["CANCELLED"],
-  CANCELLED: [],
-};
-
-const METHODS = ["CASH", "UPI", "NEFT", "CHEQUE", "BANK_TRANSFER"];
+import { blankIssues, formatDate, hasIssues, includesQuery, money, NEXT_STATUS, num, today, usePaged, useResource, useSearchFocus } from "../lib";
+import { useToast } from "../toast";
 
 function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [header, setHeader] = useState({
     client_id: "",
@@ -46,6 +39,14 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([
+      ["client_id", header.client_id, "Select a client"],
+      ["invoice_number", header.invoice_number, "Enter an invoice number"],
+      ["invoice_date", header.invoice_date, "Choose an invoice date"],
+    ]);
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -84,13 +85,15 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="stack">
+    <form onSubmit={submit} className="stack" noValidate>
       <div className="form-grid">
-        <Field label="Client">
+        <Field label="Client" error={issues.client_id}>
           <Select
-            required
             value={header.client_id}
-            onChange={(event) => setHeader({ ...header, client_id: event.target.value })}
+            onChange={(event) => {
+              setHeader({ ...header, client_id: event.target.value });
+              setIssues((current) => ({ ...current, client_id: "" }));
+            }}
           >
             <option value="">Select client</option>
             {clients.map((client) => (
@@ -98,20 +101,24 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
             ))}
           </Select>
         </Field>
-        <Field label="Invoice number">
+        <Field label="Invoice number" error={issues.invoice_number}>
           <input
-            required
             value={header.invoice_number}
-            onChange={(event) => setHeader({ ...header, invoice_number: event.target.value })}
+            onChange={(event) => {
+              setHeader({ ...header, invoice_number: event.target.value });
+              setIssues((current) => ({ ...current, invoice_number: "" }));
+            }}
             placeholder="INV-1001"
           />
         </Field>
-        <Field label="Invoice date">
+        <Field label="Invoice date" error={issues.invoice_date}>
           <input
             type="date"
-            required
             value={header.invoice_date}
-            onChange={(event) => setHeader({ ...header, invoice_date: event.target.value })}
+            onChange={(event) => {
+              setHeader({ ...header, invoice_date: event.target.value });
+              setIssues((current) => ({ ...current, invoice_date: "" }));
+            }}
           />
         </Field>
         <Field label="Tax">
@@ -179,100 +186,31 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
       >
         Add line
       </button>
-      <p className="total-line">Invoice total {money(total)} · charges {money(subtotal)}</p>
+      <p className="total-line">
+        Taxable {money(subtotal)} · tax {money(header.tax_amount)} · total {money(total)} · deduction {money(header.deduction_amount)} · balance {money(Math.max(0, total - num(header.deduction_amount)))}
+      </p>
       {error ? <p className="form-error">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Create invoice" />
     </form>
   );
 }
 
-function PaymentForm({ invoices, onClose, onCreated }) {
-  const payable = invoices.filter((invoice) => !["DRAFT", "CANCELLED"].includes(invoice.status));
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({
-    invoice_id: payable[0] ? String(payable[0].id) : "",
-    payment_date: today(),
-    amount: "",
-    payment_method: "NEFT",
-    reference_no: "",
-  });
-
-  const submit = async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-
-    try {
-      await api("/api/invoice-payments", {
-        method: "POST",
-        body: {
-          invoice_id: form.invoice_id,
-          payment_date: form.payment_date,
-          amount: num(form.amount),
-          payment_method: form.payment_method,
-          reference_no: form.reference_no.trim() || null,
-        },
-      });
-      onCreated();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label="Invoice">
-        <Select required value={form.invoice_id} onChange={(event) => setForm({ ...form, invoice_id: event.target.value })}>
-          <option value="">Select a sent invoice</option>
-          {payable.map((invoice) => (
-            <option key={invoice.id} value={invoice.id}>
-              {invoice.invoice_number} · due {money(invoice.balance_amount)}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Date">
-        <input type="date" required value={form.payment_date} onChange={(event) => setForm({ ...form, payment_date: event.target.value })} />
-      </Field>
-      <Field label="Amount">
-        <input type="number" min="0.01" step="0.01" required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} />
-      </Field>
-      <Field label="Method">
-        <Select value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value })}>
-          {METHODS.map((method) => (
-            <option key={method} value={method}>{method.replaceAll("_", " ")}</option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Reference">
-        <input value={form.reference_no} onChange={(event) => setForm({ ...form, reference_no: event.target.value })} />
-      </Field>
-      {payable.length === 0 ? <p className="form-error span-2">Send an invoice before recording a payment.</p> : null}
-      {error ? <p className="form-error span-2">{error}</p> : null}
-      <FormActions onCancel={onClose} busy={busy || payable.length === 0} submitLabel="Record payment" />
-    </form>
-  );
-}
-
 export default function Invoices() {
-  const [query, setQuery] = useState("");
+  const [params] = useSearchParams();
+  const toast = useToast();
+  const [query, setQuery] = useState(params.get("q") || "");
   const [modal, setModal] = useState("");
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
-    const [invoices, clients, payments, trips, bilties] = await Promise.all([
+    const [invoices, clients, trips, bilties] = await Promise.all([
       api("/api/invoices?limit=100"),
       api("/api/clients?limit=100"),
-      api("/api/invoice-payments?limit=100"),
       api("/api/trips?limit=100"),
       api("/api/bilties?limit=100"),
     ]);
     return {
       invoices: invoices.invoices || [],
       clients: clients.clients || [],
-      payments: payments.payments || [],
       trips: trips.trips || [],
       bilties: bilties.bilties || [],
       total: invoices.pagination?.total || 0,
@@ -291,24 +229,15 @@ export default function Invoices() {
     return rows.filter((row) => includesQuery(row, query, ["invoice_number", "status", "client_name"]));
   }, [data, names, query]);
   const pager = usePaged(filtered);
+  const focus = useSearchFocus(params, filtered, pager.setPage);
+
+  useEffect(() => setQuery(params.get("q") || ""), [params]);
 
   const changeStatus = async (invoice, status) => {
     setActionError("");
     try {
       await api(`/api/invoices/${invoice.id}/status`, { method: "PATCH", body: { status } });
-      reload();
-    } catch (err) {
-      setActionError(err.message);
-    }
-  };
-
-  const confirmPayment = async (payment) => {
-    setActionError("");
-    try {
-      await api(`/api/invoice-payments/${payment.id}/status`, {
-        method: "PATCH",
-        body: { status: "CONFIRMED" },
-      });
+      toast("Invoice updated");
       reload();
     } catch (err) {
       setActionError(err.message);
@@ -317,68 +246,46 @@ export default function Invoices() {
 
   return (
     <section>
-      <PageHeader title="Invoicing" subtitle="Draft invoices, send them, then confirm payments against the balance.">
-        <button className="btn btn-ghost" type="button" onClick={() => setModal("payment")}>Record Payment</button>
+      <PageHeader title="Invoices" subtitle="Draft invoices with freight, detention, hamali, tax, and balance.">
         <button className="btn btn-primary" type="button" onClick={() => setModal("invoice")}>New Invoice</button>
       </PageHeader>
       <Banner>{error || actionError}</Banner>
       <article className="card table-card">
         <div className="card-head">
-          <h2>Invoices {data ? <span className="count">{data.total}</span> : null}</h2>
+          <h2>invoices {data ? <span className="count">{data.total}</span> : null}</h2>
           <SearchField value={query} onChange={(value) => { setQuery(value); pager.setPage(1); }} />
         </div>
         {loading ? <p className="muted pad">Loading invoices...</p> : (
           <DataTable
             rows={pager.rows}
-            empty="No invoices yet."
+            highlightId={focus}
+            empty={query ? "No invoices match this search." : "No invoices yet."}
+            emptyAction={query ? null : { label: "New Invoice", onClick: () => setModal("invoice") }}
             columns={[
-              { key: "no", label: "Invoice", render: (row) => row.invoice_number },
+              { key: "no", label: "Invoice no", render: (row) => row.invoice_number },
               { key: "client", label: "Client", render: (row) => row.client_name },
               { key: "date", label: "Date", render: (row) => formatDate(row.invoice_date) },
+              { key: "taxable", label: "Taxable", align: "right", render: (row) => money(row.taxable_amount) },
+              { key: "subtotal", label: "Subtotal", align: "right", render: (row) => money(row.subtotal) },
+              { key: "tax", label: "Tax", align: "right", render: (row) => money(row.tax_amount) },
               { key: "total", label: "Total", align: "right", render: (row) => money(row.total_amount) },
+              { key: "deduction", label: "Deduction", align: "right", render: (row) => money(row.deduction_amount) },
               { key: "balance", label: "Balance", align: "right", render: (row) => money(row.balance_amount) },
               {
                 key: "status",
                 label: "Status",
                 render: (row) => (
-                  <Select value={row.status} onChange={(event) => changeStatus(row, event.target.value)}>
-                    <option value={row.status}>{row.status}</option>
-                    {(NEXT[row.status] || []).map((status) => (
-                      <option key={status} value={status}>{status}</option>
-                    ))}
-                  </Select>
+                  <StatusNext
+                    value={row.status}
+                    next={NEXT_STATUS.invoice[row.status] || []}
+                    onChange={(status) => changeStatus(row, status)}
+                  />
                 ),
               },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
-      </article>
-
-      <article className="card table-card">
-        <div className="card-head">
-          <h2>Payments</h2>
-        </div>
-        <DataTable
-          rows={data?.payments || []}
-          empty="No payments recorded."
-          columns={[
-            { key: "invoice", label: "Invoice", render: (row) => row.invoice_id },
-            { key: "date", label: "Date", render: (row) => formatDate(row.payment_date) },
-            { key: "method", label: "Method", render: (row) => String(row.payment_method || "—").replaceAll("_", " ") },
-            { key: "amount", label: "Net", align: "right", render: (row) => money(row.net_received_amount) },
-            { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
-            {
-              key: "action",
-              label: "",
-              render: (row) => row.status === "PENDING" ? (
-                <button className="btn btn-ghost" type="button" onClick={() => confirmPayment(row)}>
-                  Confirm
-                </button>
-              ) : "—",
-            },
-          ]}
-        />
       </article>
 
       {modal === "invoice" && data ? (
@@ -390,18 +297,7 @@ export default function Invoices() {
             onClose={() => setModal("")}
             onCreated={() => {
               setModal("");
-              reload();
-            }}
-          />
-        </Modal>
-      ) : null}
-      {modal === "payment" && data ? (
-        <Modal title="Record Payment" onClose={() => setModal("")}>
-          <PaymentForm
-            invoices={data.invoices}
-            onClose={() => setModal("")}
-            onCreated={() => {
-              setModal("");
+              toast("Invoice created");
               reload();
             }}
           />

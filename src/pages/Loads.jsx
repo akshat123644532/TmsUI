@@ -13,20 +13,22 @@ import {
   Select,
   StatusPill,
 } from "../components/ui";
-import { formatDate, includesQuery, usePaged, useResource } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
+import { useToast } from "../toast";
 
-const STATUSES = ["CREATED", "RESERVED", "COMPLETED", "CANCELLED"];
+const STATUSES = ["RESERVED", "CREATED", "CANCELLED", "COMPLETED"];
 
 export function ShipmentForm({ onClose, onCreated }) {
   const [clients, setClients] = useState([]);
   const [trips, setTrips] = useState([]);
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     bilty_number: "",
     client_id: "",
     trip_id: "",
-    status: "CREATED",
+    status: "RESERVED",
   });
 
   useEffect(() => {
@@ -34,10 +36,19 @@ export function ShipmentForm({ onClose, onCreated }) {
     api("/api/trips?limit=100").then((data) => setTrips(data.trips || [])).catch(() => {});
   }, []);
 
-  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setIssues((current) => ({ ...current, [key]: "" }));
+  };
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([
+      ["bilty_number", form.bilty_number, "Enter a bilty number"],
+    ]);
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -60,9 +71,9 @@ export function ShipmentForm({ onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label="Bilty number">
-        <input value={form.bilty_number} onChange={set("bilty_number")} required placeholder="BL-1001" />
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <Field label="Bilty number" error={issues.bilty_number}>
+        <input value={form.bilty_number} onChange={set("bilty_number")} placeholder="BL-1001" />
       </Field>
       <Field label="Status">
         <Select value={form.status} onChange={set("status")}>
@@ -90,13 +101,14 @@ export function ShipmentForm({ onClose, onCreated }) {
         </Select>
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
-      <FormActions onCancel={onClose} busy={busy} submitLabel="Create shipment" />
+      <FormActions onCancel={onClose} busy={busy} submitLabel="Create bilty" />
     </form>
   );
 }
 
 export default function Loads() {
   const [params] = useSearchParams();
+  const toast = useToast();
   const [query, setQuery] = useState(params.get("q") || "");
   const [open, setOpen] = useState(false);
   const { data, loading, error, reload } = useResource(async () => {
@@ -119,43 +131,48 @@ export default function Loads() {
     [data, query]
   );
   const pager = usePaged(filtered);
+  const focus = useSearchFocus(params, filtered, pager.setPage);
 
   useEffect(() => setQuery(params.get("q") || ""), [params]);
 
   return (
     <section>
-      <PageHeader title="Load Management" subtitle="Bilties raised for your company.">
+      <PageHeader title="Bilty" subtitle="Company bilties with client, trip, and status.">
         <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
-          New Shipment
+          New Bilty
         </button>
       </PageHeader>
       <Banner>{error}</Banner>
       <article className="card table-card">
         <div className="card-head">
-          <h2>Shipments {data ? <span className="count">{data.total}</span> : null}</h2>
+          <h2>bilties {data ? <span className="count">{data.total}</span> : null}</h2>
           <SearchField value={query} onChange={(value) => { setQuery(value); pager.setPage(1); }} />
         </div>
         {loading ? <p className="muted pad">Loading shipments...</p> : (
           <DataTable
             rows={pager.rows}
-            empty="No bilties match this search."
+            highlightId={focus}
+            empty={query ? "No bilties match this search." : "No bilties yet."}
+            emptyAction={query ? null : { label: "New Bilty", onClick: () => setOpen(true) }}
             columns={[
-              { key: "bilty_number", label: "Bilty", render: (row) => row.bilty_number },
+              { key: "bilty_number", label: "Bilty number", render: (row) => row.bilty_number },
               { key: "client", label: "Client", render: (row) => row.client_name },
-              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
               { key: "trip", label: "Trip", render: (row) => row.trip_id || "—" },
+              { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
               { key: "created", label: "Created", render: (row) => formatDate(row.created_at) },
+              { key: "updated", label: "Updated", render: (row) => formatDate(row.updated_at) },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
       {open ? (
-        <Modal title="New Shipment" onClose={() => setOpen(false)}>
+        <Modal title="New Bilty" onClose={() => setOpen(false)}>
           <ShipmentForm
             onClose={() => setOpen(false)}
             onCreated={() => {
               setOpen(false);
+              toast("Bilty created");
               reload();
             }}
           />

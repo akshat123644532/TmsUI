@@ -91,7 +91,7 @@ export function statusTone(status) {
     return "bad";
   }
 
-  if (["IN_TRANSIT", "DISPATCHED", "SENT", "PARTIAL", "PENDING", "RESERVED", "SUBMITTED"].includes(value)) {
+  if (["IN_TRANSIT", "DISPATCHED", "SENT", "PARTIAL", "PENDING", "RESERVED", "SUBMITTED", "CARRY_FORWARD"].includes(value)) {
     return "warn";
   }
 
@@ -150,6 +150,32 @@ export function lookup(map, id, field = "name") {
   return row?.[field] || `#${id}`;
 }
 
+export function blankIssues(fields) {
+  const issues = {};
+
+  for (const [key, value, message] of fields) {
+    if (!String(value ?? "").trim()) issues[key] = message;
+  }
+
+  return issues;
+}
+
+export function hasIssues(issues) {
+  return Object.values(issues || {}).some(Boolean);
+}
+
+export function useSearchFocus(params, items, setPage, pageSize = 8) {
+  const focus = params.get("focus") || "";
+
+  useEffect(() => {
+    if (!focus) return;
+    const index = (items || []).findIndex((row) => String(row.id) === String(focus));
+    if (index >= 0) setPage(Math.floor(index / pageSize) + 1);
+  }, [focus, items, setPage, pageSize]);
+
+  return focus;
+}
+
 export function includesQuery(row, query, fields) {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
@@ -189,6 +215,51 @@ export function downloadCsv(filename, rows) {
 export function today() {
   return new Date().toISOString().slice(0, 10);
 }
+
+export function tripLabel(trip) {
+  if (!trip) return "—";
+  return `${trip.source || "?"} → ${trip.destination || "?"}`;
+}
+
+export const PAYMENT_METHODS = ["CASH", "UPI", "NEFT", "CHEQUE", "BANK_TRANSFER"];
+export const EXPENSE_TYPES = ["FUEL", "TOLL", "PARKING", "FOOD", "REPAIR", "OTHER"];
+export const DEDUCTION_TYPES = ["TDS", "OTHER"];
+
+export const NEXT_STATUS = {
+  invoice: {
+    DRAFT: ["SENT", "CANCELLED"],
+    SENT: ["PARTIAL", "PAID", "CANCELLED"],
+    PARTIAL: ["PAID", "CANCELLED"],
+    PAID: ["CANCELLED"],
+    CANCELLED: [],
+  },
+  payment: {
+    PENDING: ["CONFIRMED", "CANCELLED"],
+    CONFIRMED: ["CANCELLED"],
+    CANCELLED: [],
+  },
+  advance: {
+    PENDING: ["APPROVED", "CANCELLED"],
+    APPROVED: ["PAID", "CANCELLED"],
+    PAID: [],
+    CANCELLED: [],
+  },
+  expense: {
+    PENDING: ["APPROVED", "REJECTED"],
+    APPROVED: [],
+    REJECTED: [],
+  },
+  settlement: {
+    PENDING: ["SETTLED", "CARRY_FORWARD"],
+    SETTLED: [],
+    CARRY_FORWARD: ["SETTLED"],
+  },
+  report: {
+    SUBMITTED: ["VERIFIED", "REJECTED"],
+    VERIFIED: [],
+    REJECTED: [],
+  },
+};
 
 export function num(value) {
   const amount = Number(value);

@@ -1,31 +1,57 @@
 import { createContext, useContext, useState } from "react";
-import { api, clearSession, getRefreshToken, getToken, getUser, setSession } from "./api";
+import { api, clearSession, DEMO_TOKEN, getRefreshToken, getToken, getUser, setSession } from "./api";
 
 const AuthContext = createContext(null);
+
+const DEMO_EMAIL = "admin@tms.com";
+const DEMO_PASSWORD = "123456";
+
+const DEMO_USER = {
+  id: 1,
+  company_id: 2,
+  user_type: "COMPANY_ADMIN",
+  name: "TMS Admin",
+  mobile: "9999999999",
+  email: DEMO_EMAIL,
+  status: 1,
+  company_name: "TMS Demo Company",
+};
+
+function isDemoLogin(email, password) {
+  return email.trim().toLowerCase() === DEMO_EMAIL && password === DEMO_PASSWORD;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getUser());
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
 
-  const signup = async (payload) => {
-    return api("/api/register", {
-      method: "POST",
-      auth: false,
-      body: payload,
-    });
-  };
-
   const login = async (email, password) => {
-    const data = await api("/api/login", {
-      method: "POST",
-      auth: false,
-      body: { email, password },
-    });
+    try {
+      const data = await api("/api/login", {
+        method: "POST",
+        auth: false,
+        body: { email, password },
+      });
 
-    setSession(data);
-    setUser(data.user);
+      if (data?.token && data?.user) {
+        setSession(data);
+        setUser(data.user);
+        setAuthed(true);
+        return data.user;
+      }
+    } catch (error) {
+      if (!isDemoLogin(email, password)) throw error;
+    }
+
+    if (!isDemoLogin(email, password)) {
+      throw new Error("Invalid email or password");
+    }
+
+    const user = { ...DEMO_USER };
+    setSession({ token: DEMO_TOKEN, refresh_token: DEMO_TOKEN, user });
+    setUser(user);
     setAuthed(true);
-    return data.user;
+    return user;
   };
 
   const logout = async () => {
@@ -44,14 +70,18 @@ export function AuthProvider({ children }) {
   };
 
   const refreshUser = async () => {
+    if (getToken() === DEMO_TOKEN) return getUser();
+
     const data = await api("/api/profile");
+    if (!data?.user) return getUser();
+
     setSession({ user: data.user });
     setUser(data.user);
     return data.user;
   };
 
   return (
-    <AuthContext.Provider value={{ user, authed, login, signup, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, authed, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

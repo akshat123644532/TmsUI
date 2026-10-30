@@ -1,11 +1,13 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { Banner, PageHeader, StatusPill } from "../components/ui";
+import { Banner, EmptyState, PageHeader, StatusPill } from "../components/ui";
 import { formatDate, useResource } from "../lib";
 
 const COLUMNS = ["CREATED", "DISPATCHED", "IN_TRANSIT", "DELIVERED", "COMPLETED", "CANCELLED"];
 
-export default function Outlook() {
+export default function Outlook({ embedded = false }) {
+  const navigate = useNavigate();
   const { data, loading, error } = useResource(async () => {
     const [trips, vehicles, drivers] = await Promise.all([
       api("/api/trips?limit=100"),
@@ -32,12 +34,18 @@ export default function Outlook() {
 
   return (
     <section>
-      <PageHeader
-        title="Carrier Outlook"
-        subtitle="Live trip board from dispatch through delivery."
-      />
-      <Banner>{error}</Banner>
-      {loading ? <p className="muted">Loading the board...</p> : (
+      {embedded ? null : (
+        <PageHeader
+          title="Trips"
+          subtitle="Live trip board from dispatch through delivery."
+        />
+      )}
+      {embedded ? null : <Banner>{error}</Banner>}
+      {loading ? <p className="muted">Loading the board...</p> : !data ? null : data.trips.length === 0 ? (
+        <article className="card table-card">
+          <EmptyState title="No trips on the board yet." actionLabel="Plan a trip" onAction={() => navigate("/routes")} />
+        </article>
+      ) : (
         <div className="board">
           {COLUMNS.map((status) => (
             <div className="column" key={status}>

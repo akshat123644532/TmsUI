@@ -50,11 +50,12 @@ export function Modal({ title, onClose, children, wide = false }) {
   );
 }
 
-export function Field({ label, children }) {
+export function Field({ label, error, children }) {
   return (
-    <label className="field">
+    <label className={`field${error ? " invalid" : ""}`}>
       <span>{label}</span>
       {children}
+      {error ? <small className="field-error">{error}</small> : null}
     </label>
   );
 }
@@ -65,6 +66,17 @@ export function TextInput(props) {
 
 export function Select({ children, ...props }) {
   return <select {...props}>{children}</select>;
+}
+
+export function StatusNext({ value, next = [], onChange }) {
+  return (
+    <Select value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value={value}>{String(value || "—").replaceAll("_", " ")}</option>
+      {next.filter((status) => status !== value).map((status) => (
+        <option key={status} value={status}>{status.replaceAll("_", " ")}</option>
+      ))}
+    </Select>
+  );
 }
 
 export function FormActions({ onCancel, busy, submitLabel = "Save" }) {
@@ -104,9 +116,34 @@ export function Trend({ value }) {
   );
 }
 
-export function DataTable({ columns, rows, empty = "No records yet." }) {
+export function EmptyState({ title, actionLabel, onAction }) {
+  return (
+    <div className="empty-state">
+      <p>{title}</p>
+      {actionLabel ? (
+        <button className="btn btn-primary" type="button" onClick={onAction}>
+          {actionLabel}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function DataTable({ columns, rows, empty = "No records yet.", emptyAction, highlightId }) {
+  useEffect(() => {
+    if (!highlightId) return;
+    const row = document.querySelector(`[data-row-id="${CSS.escape(String(highlightId))}"]`);
+    row?.scrollIntoView({ block: "center" });
+  }, [highlightId, rows]);
+
   if (!rows?.length) {
-    return <div className="empty">{empty}</div>;
+    return (
+      <EmptyState
+        title={empty}
+        actionLabel={emptyAction?.label}
+        onAction={emptyAction?.onClick}
+      />
+    );
   }
 
   return (
@@ -123,9 +160,13 @@ export function DataTable({ columns, rows, empty = "No records yet." }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row._key || row.id}>
+            <tr
+              key={row._key || row.id}
+              data-row-id={row.id ?? ""}
+              className={highlightId && String(row.id) === String(highlightId) ? "row-hit" : ""}
+            >
               {columns.map((column) => (
-                <td key={column.key} className={column.align || ""}>
+                <td key={column.key} className={column.align || ""} data-label={column.label || ""}>
                   {column.render ? column.render(row) : row[column.key] ?? "—"}
                 </td>
               ))}

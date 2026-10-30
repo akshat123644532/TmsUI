@@ -1,5 +1,7 @@
 const BASE = import.meta.env.VITE_API_URL || "";
 
+export const DEMO_TOKEN = "demo-session";
+
 const KEYS = {
   token: "tms_token",
   refresh: "tms_refresh",
@@ -84,7 +86,7 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
 
   const data = await res.json().catch(() => null);
 
-  if (res.status === 401 && auth && retry) {
+  if (res.status === 401 && auth && retry && getToken() !== DEMO_TOKEN) {
     try {
       if (!refreshPromise) {
         refreshPromise = refreshSession().finally(() => {

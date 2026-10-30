@@ -14,10 +14,12 @@ import {
   StatusPill,
   Tabs,
 } from "../components/ui";
-import { formatDate, includesQuery, today, usePaged, useResource } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, today, usePaged, useResource, useSearchFocus } from "../lib";
+import { useToast } from "../toast";
 
 function VehicleForm({ types, onClose, onCreated }) {
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     vehicle_type_id: types[0] ? String(types[0].id) : "",
@@ -27,6 +29,13 @@ function VehicleForm({ types, onClose, onCreated }) {
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([
+      ["vehicle_type_id", form.vehicle_type_id, "Select a vehicle type"],
+      ["registration_no", form.registration_no, "Enter the registration number"],
+    ]);
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -36,7 +45,7 @@ function VehicleForm({ types, onClose, onCreated }) {
         body: {
           vehicle_type_id: form.vehicle_type_id,
           registration_no: form.registration_no.trim(),
-          capacity: form.capacity || null,
+          capacity: form.capacity === "" ? null : Number(form.capacity),
         },
       });
       onCreated();
@@ -48,20 +57,20 @@ function VehicleForm({ types, onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label="Type">
-        <Select required value={form.vehicle_type_id} onChange={(event) => setForm({ ...form, vehicle_type_id: event.target.value })}>
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <Field label="Type" error={issues.vehicle_type_id}>
+        <Select value={form.vehicle_type_id} onChange={(event) => { setForm({ ...form, vehicle_type_id: event.target.value }); setIssues((current) => ({ ...current, vehicle_type_id: "" })); }}>
           <option value="">Select type</option>
           {types.map((type) => (
             <option key={type.id} value={type.id}>{type.name}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Registration">
-        <input required value={form.registration_no} onChange={(event) => setForm({ ...form, registration_no: event.target.value })} placeholder="MH01AB1234" />
+      <Field label="Registration" error={issues.registration_no}>
+        <input value={form.registration_no} onChange={(event) => { setForm({ ...form, registration_no: event.target.value }); setIssues((current) => ({ ...current, registration_no: "" })); }} placeholder="MH01AB1234" />
       </Field>
       <Field label="Capacity">
-        <input value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} placeholder="16 ton" />
+        <input type="number" min="0" step="0.01" value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} placeholder="16.00" />
       </Field>
       {types.length === 0 ? <p className="form-error span-2">Add a vehicle type before registering a vehicle.</p> : null}
       {error ? <p className="form-error span-2">{error}</p> : null}
@@ -73,10 +82,15 @@ function VehicleForm({ types, onClose, onCreated }) {
 function TypeForm({ onClose, onCreated }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([["name", name, "Enter a type name"]]);
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -91,9 +105,9 @@ function TypeForm({ onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label="Type name">
-        <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Container" />
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <Field label="Type name" error={issues.name}>
+        <input value={name} onChange={(event) => { setName(event.target.value); setIssues({}); }} placeholder="Container" />
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Add type" />
@@ -103,6 +117,7 @@ function TypeForm({ onClose, onCreated }) {
 
 function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     vehicle_id: "",
@@ -111,10 +126,20 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
     start_date: today(),
     end_date: "",
   });
-  const set = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setIssues((current) => ({ ...current, [key]: "" }));
+  };
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = blankIssues([
+      ["vehicle_id", form.vehicle_id, "Select a vehicle"],
+      ["start_date", form.start_date, "Choose a start date"],
+    ]);
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
     setBusy(true);
     setError("");
 
@@ -139,9 +164,9 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid">
-      <Field label="Vehicle">
-        <Select required value={form.vehicle_id} onChange={set("vehicle_id")}>
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <Field label="Vehicle" error={issues.vehicle_id}>
+        <Select value={form.vehicle_id} onChange={set("vehicle_id")}>
           <option value="">Select vehicle</option>
           {vehicles.map((row) => <option key={row.id} value={row.id}>{row.registration_no}</option>)}
         </Select>
@@ -158,8 +183,8 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
           {helpers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
         </Select>
       </Field>
-      <Field label="Start date">
-        <input type="date" required value={form.start_date} onChange={set("start_date")} />
+      <Field label="Start date" error={issues.start_date}>
+        <input type="date" value={form.start_date} onChange={set("start_date")} />
       </Field>
       <Field label="End date">
         <input type="date" value={form.end_date} onChange={set("end_date")} />
@@ -172,6 +197,7 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
 
 export default function Fleet() {
   const [params] = useSearchParams();
+  const toast = useToast();
   const [tab, setTab] = useState("vehicles");
   const [query, setQuery] = useState(params.get("q") || "");
   const [modal, setModal] = useState("");
@@ -231,6 +257,7 @@ export default function Fleet() {
       .filter((row) => includesQuery(row, query, ["registration_no", "type_name", "capacity"]));
   }, [data, tab, query, typeName, vehicleName, driverName, helperName]);
   const pager = usePaged(rows);
+  const focus = useSearchFocus(params, rows, pager.setPage);
 
   useEffect(() => setQuery(params.get("q") || ""), [params]);
 
@@ -238,7 +265,7 @@ export default function Fleet() {
 
   return (
     <section>
-      <PageHeader title="Dispatcher" subtitle="Vehicles, crew assignments, and the types your company runs.">
+      <PageHeader title="Vehicles" subtitle="Vehicles, types, and driver or helper assignments.">
         <button className="btn btn-primary" type="button" onClick={() => setModal(tab)}>
           {actionLabel}
         </button>
@@ -264,7 +291,9 @@ export default function Fleet() {
         {loading ? <p className="muted pad">Loading fleet...</p> : tab === "types" ? (
           <DataTable
             rows={pager.rows}
-            empty="No vehicle types yet."
+            highlightId={focus}
+            empty={query ? "No vehicle types match this search." : "No vehicle types yet."}
+            emptyAction={query ? null : { label: "New Type", onClick: () => setModal("types") }}
             columns={[
               { key: "name", label: "Name", render: (row) => row.name },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
@@ -273,7 +302,9 @@ export default function Fleet() {
         ) : tab === "assignments" ? (
           <DataTable
             rows={pager.rows}
-            empty="No crew is assigned."
+            highlightId={focus}
+            empty={query ? "No assignments match this search." : "No crew is assigned."}
+            emptyAction={query ? null : { label: "Assign Crew", onClick: () => setModal("assignments") }}
             columns={[
               { key: "vehicle", label: "Vehicle", render: (row) => row.vehicle_name },
               { key: "driver", label: "Driver", render: (row) => row.driver_name },
@@ -285,7 +316,9 @@ export default function Fleet() {
         ) : (
           <DataTable
             rows={pager.rows}
-            empty="No vehicles match this search."
+            highlightId={focus}
+            empty={query ? "No vehicles match this search." : "No vehicles yet."}
+            emptyAction={query ? null : { label: "New Vehicle", onClick: () => setModal("vehicles") }}
             columns={[
               { key: "reg", label: "Registration", render: (row) => row.registration_no },
               { key: "type", label: "Type", render: (row) => row.type_name },
@@ -299,12 +332,12 @@ export default function Fleet() {
 
       {modal === "vehicles" && data ? (
         <Modal title="New Vehicle" onClose={() => setModal("")}>
-          <VehicleForm types={data.types} onClose={() => setModal("")} onCreated={() => { setModal(""); reload(); }} />
+          <VehicleForm types={data.types} onClose={() => setModal("")} onCreated={() => { setModal(""); toast("Vehicle added"); reload(); }} />
         </Modal>
       ) : null}
       {modal === "types" ? (
         <Modal title="New Vehicle Type" onClose={() => setModal("")}>
-          <TypeForm onClose={() => setModal("")} onCreated={() => { setModal(""); reload(); }} />
+          <TypeForm onClose={() => setModal("")} onCreated={() => { setModal(""); toast("Vehicle type added"); reload(); }} />
         </Modal>
       ) : null}
       {modal === "assignments" && data ? (
@@ -314,7 +347,7 @@ export default function Fleet() {
             drivers={data.drivers}
             helpers={data.helpers}
             onClose={() => setModal("")}
-            onCreated={() => { setModal(""); reload(); }}
+            onCreated={() => { setModal(""); toast("Crew assigned"); reload(); }}
           />
         </Modal>
       ) : null}

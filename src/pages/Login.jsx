@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { Icon } from "../components/Icons";
 
@@ -11,10 +11,17 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
+    const nextIssues = {};
+    if (!email.trim()) nextIssues.email = "Enter your email";
+    if (!password) nextIssues.password = "Enter your password";
+    setIssues(nextIssues);
+    if (nextIssues.email || nextIssues.password) return;
+
     setBusy(true);
     setError("");
 
@@ -30,7 +37,7 @@ export default function Login() {
 
   return (
     <div className="login-screen">
-      <form className="login-card" onSubmit={submit}>
+      <form className="login-card" onSubmit={submit} noValidate>
         <div className="brand-lockup login-brand">
           <span className="brand-mark">
             <Icon name="truck" size={20} />
@@ -41,28 +48,35 @@ export default function Login() {
         </div>
         <h1>Sign in</h1>
         <p className="page-sub">Transport operations for your company.</p>
+        <p className="form-hint">Demo login: admin@tms.com / 123456</p>
 
-        <label className="field">
+        <label className={`field${issues.email ? " invalid" : ""}`}>
           <span>Email</span>
           <input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setIssues((current) => ({ ...current, email: "" }));
+            }}
             placeholder="you@company.com"
-            required
             autoComplete="username"
           />
+          {issues.email ? <small className="field-error">{issues.email}</small> : null}
         </label>
-        <label className="field">
+        <label className={`field${issues.password ? " invalid" : ""}`}>
           <span>Password</span>
           <input
             type="password"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              setIssues((current) => ({ ...current, password: "" }));
+            }}
             placeholder="Password"
-            required
             autoComplete="current-password"
           />
+          {issues.password ? <small className="field-error">{issues.password}</small> : null}
         </label>
 
         {notice ? <p className="form-notice">{notice}</p> : null}
@@ -71,9 +85,6 @@ export default function Login() {
         <button className="btn btn-primary login-submit" type="submit" disabled={busy}>
           {busy ? "Signing in..." : "Sign in"}
         </button>
-        <p className="auth-switch">
-          New here? <Link to="/signup">Create an account</Link>
-        </p>
       </form>
     </div>
   );
