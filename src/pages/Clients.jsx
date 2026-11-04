@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
+  DetailList,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
   SearchField,
+  Select,
   StatusPill,
+  ViewButton,
 } from "../components/ui";
 import { blankIssues, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
@@ -25,6 +29,7 @@ function ClientForm({ onClose, onCreated }) {
     email: "",
     address: "",
     gst_number: "",
+    status: "1",
   });
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -51,6 +56,7 @@ function ClientForm({ onClose, onCreated }) {
           email: form.email.trim() || null,
           address: form.address.trim() || null,
           gst_number: form.gst_number.trim() || null,
+          status: Number(form.status),
         },
       });
       onCreated();
@@ -63,11 +69,12 @@ function ClientForm({ onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Client name" error={issues.name}>
-        <input value={form.name} onChange={set("name")} />
+      <FormLegend />
+      <Field label="Client name" required error={issues.name}>
+        <input value={form.name} onChange={set("name")} placeholder="Acme Logistics" />
       </Field>
       <Field label="Mobile">
-        <input value={form.mobile} onChange={set("mobile")} />
+        <input value={form.mobile} onChange={set("mobile")} placeholder="9876543210" />
       </Field>
       <Field label="Email">
         <input type="email" value={form.email} onChange={set("email")} />
@@ -77,6 +84,12 @@ function ClientForm({ onClose, onCreated }) {
       </Field>
       <Field label="Address">
         <input value={form.address} onChange={set("address")} />
+      </Field>
+      <Field label="Status">
+        <Select value={form.status} onChange={set("status")}>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </Select>
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Add client" />
@@ -89,11 +102,12 @@ export default function Clients() {
   const toast = useToast();
   const [query, setQuery] = useState(params.get("q") || "");
   const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
   const { data, loading, error, reload } = useResource(async () => {
-    const response = await api("/api/clients?limit=100");
+    const response = await fetchAll("/api/clients", "clients");
     return {
-      rows: response.clients || [],
-      total: response.pagination?.total || 0,
+      rows: response.rows,
+      total: response.total,
     };
   }, []);
   const filtered = useMemo(
@@ -131,11 +145,23 @@ export default function Clients() {
               { key: "gst", label: "GST", render: (row) => row.gst_number || "—" },
               { key: "address", label: "Address", render: (row) => row.address || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail(row)} /> },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
+      {detail ? (
+        <Modal title={detail.name} onClose={() => setDetail(null)}>
+          <DetailList rows={[
+            ["Mobile", detail.mobile],
+            ["Email", detail.email],
+            ["GST", detail.gst_number],
+            ["Address", detail.address],
+            ["Status", Number(detail.status) === 1 ? "Active" : "Inactive"],
+          ]} />
+        </Modal>
+      ) : null}
       {open ? (
         <Modal title="New Client" onClose={() => setOpen(false)}>
           <ClientForm

@@ -50,14 +50,21 @@ export function Modal({ title, onClose, children, wide = false }) {
   );
 }
 
-export function Field({ label, error, children }) {
+export function Field({ label, error, required = false, hint, children }) {
   return (
-    <label className={`field${error ? " invalid" : ""}`}>
-      <span>{label}</span>
+    <label className={`field${error ? " invalid" : ""}${required ? " required" : ""}`}>
+      <span className="field-label">
+        {label}
+        {required ? <abbr className="req" title="Required">*</abbr> : null}
+      </span>
       {children}
-      {error ? <small className="field-error">{error}</small> : null}
+      {error ? <small className="field-error">{error}</small> : hint ? <small className="field-hint">{hint}</small> : null}
     </label>
   );
+}
+
+export function FormLegend() {
+  return <p className="form-legend"><abbr className="req" title="Required">*</abbr> Required field</p>;
 }
 
 export function TextInput(props) {
@@ -119,6 +126,7 @@ export function Trend({ value }) {
 export function EmptyState({ title, actionLabel, onAction }) {
   return (
     <div className="empty-state">
+      <span className="empty-mark" aria-hidden="true" />
       <p>{title}</p>
       {actionLabel ? (
         <button className="btn btn-primary" type="button" onClick={onAction}>
@@ -231,6 +239,49 @@ export function SearchField({ value, onChange, placeholder = "Search records..."
         placeholder={placeholder}
       />
     </label>
+  );
+}
+
+export function ChipFilter({ options, value, onChange }) {
+  if (!options?.length) return null;
+
+  return (
+    <div className="chip-filter" role="tablist" aria-label="Filter by status">
+      <button type="button" className={`chip${!value ? " active" : ""}`} onClick={() => onChange("")}>
+        All
+      </button>
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          className={`chip${value === String(option) ? " active" : ""}`}
+          onClick={() => onChange(String(option))}
+        >
+          {String(option).replaceAll("_", " ")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function DetailList({ rows }) {
+  return (
+    <dl className="detail-list">
+      {rows.filter((row) => row).map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value === 0 || value ? value : "—"}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function ViewButton({ onClick }) {
+  return (
+    <button className="btn btn-ghost table-action" type="button" onClick={onClick}>
+      View
+    </button>
   );
 }
 

@@ -55,13 +55,15 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try {
-      await api("/api/logout", {
-        method: "POST",
-        body: { refresh_token: getRefreshToken() },
-      });
-    } catch {
-      clearSession();
+    if (getToken() !== DEMO_TOKEN) {
+      try {
+        await api("/api/logout", {
+          method: "POST",
+          body: { refresh_token: getRefreshToken() },
+        });
+      } catch {
+        /* still sign out locally */
+      }
     }
 
     clearSession();
@@ -80,8 +82,14 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const applyUser = (next) => {
+    if (!next) return;
+    setSession({ user: next });
+    setUser(next);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, authed, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, authed, login, logout, refreshUser, applyUser }}>
       {children}
     </AuthContext.Provider>
   );

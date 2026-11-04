@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
+  ChipFilter,
   DataTable,
+  DetailList,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -13,8 +16,9 @@ import {
   Select,
   StatusPill,
   Tabs,
+  ViewButton,
 } from "../components/ui";
-import { blankIssues, formatDate, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, statusList, usePaged, useResource, useSearchFocus } from "../lib";
 import Outlook from "./Outlook";
 import { useToast } from "../toast";
 
@@ -81,7 +85,8 @@ function TripForm({ options, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Vehicle" error={issues.vehicle_id}>
+      <FormLegend />
+      <Field label="Vehicle" required error={issues.vehicle_id}>
         <Select value={form.vehicle_id} onChange={set("vehicle_id")}>
           <option value="">Select vehicle</option>
           {options.vehicles.map((row) => (
@@ -89,7 +94,7 @@ function TripForm({ options, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Driver" error={issues.driver_id}>
+      <Field label="Driver" required error={issues.driver_id}>
         <Select value={form.driver_id} onChange={set("driver_id")}>
           <option value="">Select driver</option>
           {options.drivers.map((row) => (
@@ -121,24 +126,24 @@ function TripForm({ options, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Status">
+      <Field label="Status" hint="Default CREATED">
         <Select value={form.status} onChange={set("status")}>
           {STATUSES.map((status) => (
             <option key={status} value={status}>{status.replaceAll("_", " ")}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Source" error={issues.source}>
+      <Field label="Source" required error={issues.source}>
         <input value={form.source} onChange={set("source")} placeholder="Mumbai" />
       </Field>
-      <Field label="Destination" error={issues.destination}>
+      <Field label="Destination" required error={issues.destination}>
         <input value={form.destination} onChange={set("destination")} placeholder="Delhi" />
       </Field>
       <Field label="Start date">
-        <input type="date" value={form.start_date} onChange={set("start_date")} />
+        <input type="datetime-local" value={form.start_date} onChange={set("start_date")} />
       </Field>
       <Field label="End date">
-        <input type="date" value={form.end_date} onChange={set("end_date")} />
+        <input type="datetime-local" value={form.end_date} onChange={set("end_date")} />
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Create trip" />
@@ -152,23 +157,25 @@ export default function RoutesPage() {
   const [query, setQuery] = useState(params.get("q") || "");
   const [tab, setTab] = useState(params.get("tab") || "trips");
   const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState("");
+  const [detail, setDetail] = useState(null);
   const { data, loading, error, reload } = useResource(async () => {
     const [trips, vehicles, drivers, helpers, clients, bilties] = await Promise.all([
-      api("/api/trips?limit=100"),
-      api("/api/vehicles?limit=100"),
-      api("/api/drivers?limit=100"),
-      api("/api/helpers?limit=100"),
-      api("/api/clients?limit=100"),
-      api("/api/bilties?limit=100"),
+      fetchAll("/api/trips", "trips"),
+      fetchAll("/api/vehicles", "vehicles"),
+      fetchAll("/api/drivers", "drivers"),
+      fetchAll("/api/helpers", "helpers"),
+      fetchAll("/api/clients", "clients"),
+      fetchAll("/api/bilties", "bilties"),
     ]);
     return {
-      trips: trips.trips || [],
-      total: trips.pagination?.total || 0,
-      vehicles: vehicles.vehicles || [],
-      drivers: drivers.drivers || [],
-      helpers: helpers.helpers || [],
-      clients: clients.clients || [],
-      bilties: bilties.bilties || [],
+      trips: trips.rows,
+      total: trips.total,
+      vehicles: vehicles.rows,
+      drivers: drivers.rows,
+      helpers: helpers.rows,
+      clients: clients.rows,
+      bilties: bilties.rows,
     };
   }, []);
 
@@ -191,8 +198,11 @@ export default function RoutesPage() {
       bilty_number: names.bilty.get(String(trip.bilty_id)) || "—",
       route: `${trip.source || ""} ${trip.destination || ""}`,
     }));
-    return rows.filter((row) => includesQuery(row, query, ["route", "status", "vehicle_name", "driver_name", "helper_name", "client_name", "bilty_number", "source", "destination"]));
-  }, [data, names, query]);
+    return rows.filter((row) => (
+      (!status || String(row.status) === status)
+      && includesQuery(row, query, ["route", "status", "vehicle_name", "driver_name", "helper_name", "client_name", "bilty_number", "source", "destination"])
+    ));
+  }, [data, names, query, status]);
   const pager = usePaged(filtered);
   const focus = useSearchFocus(params, filtered, pager.setPage);
 
@@ -225,6 +235,7 @@ export default function RoutesPage() {
           <h2>trips {data ? <span className="count">{data.total}</span> : null}</h2>
           <SearchField value={query} onChange={(value) => { setQuery(value); pager.setPage(1); }} />
         </div>
+        <ChipFilter options={statusList(data?.trips)} value={status} onChange={(value) => { setStatus(value); pager.setPage(1); }} />
         {loading ? <p className="muted pad">Loading trips...</p> : (
           <DataTable
             rows={pager.rows}
@@ -241,12 +252,27 @@ export default function RoutesPage() {
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
               { key: "start", label: "Start", render: (row) => formatDate(row.start_date) },
               { key: "end", label: "End", render: (row) => formatDate(row.end_date) },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail(row)} /> },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
       )}
+      {detail ? (
+        <Modal title={`${detail.source} → ${detail.destination}`} onClose={() => setDetail(null)}>
+          <DetailList rows={[
+            ["Vehicle", detail.vehicle_name],
+            ["Driver", detail.driver_name],
+            ["Helper", detail.helper_name],
+            ["Client", detail.client_name],
+            ["Bilty", detail.bilty_number],
+            ["Status", detail.status],
+            ["Start", formatDate(detail.start_date)],
+            ["End", formatDate(detail.end_date)],
+          ]} />
+        </Modal>
+      ) : null}
       {open && data ? (
         <Modal title="New Trip" onClose={() => setOpen(false)} wide>
           <TripForm

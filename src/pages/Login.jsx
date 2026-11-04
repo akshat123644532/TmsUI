@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { Icon } from "../components/Icons";
+import { useTheme } from "../theme";
 
 export default function Login() {
   const { login } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const notice = location.state?.notice || "";
@@ -37,8 +39,16 @@ export default function Login() {
 
   return (
     <div className="login-screen">
-      <form className="login-card" onSubmit={submit} noValidate>
-        <div className="brand-lockup login-brand">
+      <button
+        className="icon-btn login-theme"
+        type="button"
+        aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+      >
+        <Icon name={theme === "light" ? "moon" : "sun"} />
+      </button>
+      <section className="login-hero">
+        <div className="brand-lockup">
           <span className="brand-mark">
             <Icon name="truck" size={20} />
           </span>
@@ -46,46 +56,52 @@ export default function Login() {
             TMS <span>Desk</span>
           </strong>
         </div>
-        <h1>Sign in</h1>
-        <p className="page-sub">Transport operations for your company.</p>
-        <p className="form-hint">Demo login: admin@tms.com / 123456</p>
+        <h2>One desk for every trip.</h2>
+        <p>Book a bilty, assign a truck, settle expenses, and invoice the client without leaving the panel.</p>
+      </section>
+      <div className="login-card-wrap">
+        <form className="login-card" onSubmit={submit} noValidate>
+          <h1>Sign in</h1>
+          <p className="page-sub">Transport operations for your company.</p>
+          <p className="form-hint">Demo login: admin@tms.com / 123456</p>
 
-        <label className={`field${issues.email ? " invalid" : ""}`}>
-          <span>Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setIssues((current) => ({ ...current, email: "" }));
-            }}
-            placeholder="you@company.com"
-            autoComplete="username"
-          />
-          {issues.email ? <small className="field-error">{issues.email}</small> : null}
-        </label>
-        <label className={`field${issues.password ? " invalid" : ""}`}>
-          <span>Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setIssues((current) => ({ ...current, password: "" }));
-            }}
-            placeholder="Password"
-            autoComplete="current-password"
-          />
-          {issues.password ? <small className="field-error">{issues.password}</small> : null}
-        </label>
+          <label className={`field${issues.email ? " invalid" : ""}`}>
+            <span>Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setIssues((current) => ({ ...current, email: "" }));
+              }}
+              placeholder="you@company.com"
+              autoComplete="username"
+            />
+            {issues.email ? <small className="field-error">{issues.email}</small> : null}
+          </label>
+          <label className={`field${issues.password ? " invalid" : ""}`}>
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setIssues((current) => ({ ...current, password: "" }));
+              }}
+              placeholder="Password"
+              autoComplete="current-password"
+            />
+            {issues.password ? <small className="field-error">{issues.password}</small> : null}
+          </label>
 
-        {notice ? <p className="form-notice">{notice}</p> : null}
-        {error ? <p className="form-error">{error}</p> : null}
+          {notice ? <p className="form-notice">{notice}</p> : null}
+          {error ? <p className="form-error">{error}</p> : null}
 
-        <button className="btn btn-primary login-submit" type="submit" disabled={busy}>
-          {busy ? "Signing in..." : "Sign in"}
-        </button>
-      </form>
+          <button className="btn btn-primary login-submit" type="submit" disabled={busy}>
+            {busy ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

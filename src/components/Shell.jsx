@@ -1,25 +1,47 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { api, DEMO_TOKEN, getToken, pingApi } from "../api";
+import { api, DEMO_TOKEN, fetchAll, getToken, pingApi } from "../api";
 import { useAuth } from "../auth";
 import { initials, roleLabel } from "../lib";
+import { useTheme } from "../theme";
 import { Icon } from "./Icons";
 import { Modal } from "./ui";
 
-const NAV = [
-  { to: "/", label: "Dashboard", icon: "grid" },
-  { to: "/users", label: "Users", icon: "gear", admin: true },
-  { to: "/fleet", label: "Vehicles", icon: "truck" },
-  { to: "/staff", label: "Drivers & Helpers", icon: "users" },
-  { to: "/loads", label: "Bilty", icon: "box" },
-  { to: "/routes", label: "Trips", icon: "pin" },
-  { to: "/expenses", label: "Trip Expenses", icon: "rupee" },
-  { to: "/settlements", label: "Trip Settlement", icon: "check" },
-  { to: "/clients", label: "Clients", icon: "crm" },
-  { to: "/invoices", label: "Invoices", icon: "invoice" },
-  { to: "/payments", label: "Payments", icon: "radio" },
-  { to: "/reports", label: "Reports", icon: "download" },
-  { to: "/documents", label: "Documents", icon: "file" },
+const NAV_GROUPS = [
+  {
+    label: "Overview",
+    items: [
+      { to: "/", label: "Dashboard", icon: "grid" },
+      { to: "/users", label: "Users", icon: "gear", admin: true },
+      { to: "/access", label: "Module Access", icon: "gear", admin: true },
+    ],
+  },
+  {
+    label: "Fleet",
+    items: [
+      { to: "/fleet", label: "Vehicles", icon: "truck" },
+      { to: "/staff", label: "Drivers & Helpers", icon: "users" },
+      { to: "/documents", label: "Documents", icon: "file" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { to: "/loads", label: "Bilty", icon: "box" },
+      { to: "/routes", label: "Trips", icon: "pin" },
+      { to: "/expenses", label: "Trip Expenses", icon: "rupee" },
+      { to: "/settlements", label: "Trip Settlement", icon: "check" },
+      { to: "/reports", label: "Reports", icon: "download" },
+    ],
+  },
+  {
+    label: "Billing",
+    items: [
+      { to: "/clients", label: "Clients", icon: "crm" },
+      { to: "/invoices", label: "Invoices", icon: "invoice" },
+      { to: "/payments", label: "Payments", icon: "radio" },
+    ],
+  },
 ];
 
 const COMPANY_NAMES = {
@@ -29,6 +51,7 @@ const COMPANY_NAMES = {
 
 export default function Shell() {
   const { user, logout, refreshUser } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -95,16 +118,16 @@ export default function Shell() {
 
       try {
         const [bilties, trips, clients, vehicles, drivers] = await Promise.all([
-          api("/api/bilties?limit=100"),
-          api("/api/trips?limit=100"),
-          api("/api/clients?limit=100"),
-          api("/api/vehicles?limit=100"),
-          api("/api/drivers?limit=100"),
+          fetchAll("/api/bilties", "bilties"),
+          fetchAll("/api/trips", "trips"),
+          fetchAll("/api/clients", "clients"),
+          fetchAll("/api/vehicles", "vehicles"),
+          fetchAll("/api/drivers", "drivers"),
         ]);
         const q = needle.toLowerCase();
         const next = [];
 
-        for (const row of bilties.bilties || []) {
+        for (const row of bilties.rows || []) {
           if (String(row.bilty_number || "").toLowerCase().includes(q)) {
             next.push({
               id: `b-${row.id}`,
@@ -117,7 +140,7 @@ export default function Shell() {
           }
         }
 
-        for (const row of trips.trips || []) {
+        for (const row of trips.rows || []) {
           const queryText = `${row.source || ""} ${row.destination || ""}`.trim();
           const label = `${row.source || ""} → ${row.destination || ""}`;
           if (label.toLowerCase().includes(q) || queryText.toLowerCase().includes(q) || String(row.status || "").toLowerCase().includes(q)) {
@@ -132,7 +155,7 @@ export default function Shell() {
           }
         }
 
-        for (const row of clients.clients || []) {
+        for (const row of clients.rows || []) {
           if (String(row.name || "").toLowerCase().includes(q)) {
             next.push({
               id: `c-${row.id}`,
@@ -145,7 +168,7 @@ export default function Shell() {
           }
         }
 
-        for (const row of vehicles.vehicles || []) {
+        for (const row of vehicles.rows || []) {
           if (String(row.registration_no || "").toLowerCase().includes(q)) {
             next.push({
               id: `v-${row.id}`,
@@ -158,7 +181,7 @@ export default function Shell() {
           }
         }
 
-        for (const row of drivers.drivers || []) {
+        for (const row of drivers.rows || []) {
           if (String(row.name || "").toLowerCase().includes(q)) {
             next.push({
               id: `d-${row.id}`,
@@ -182,14 +205,14 @@ export default function Shell() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const openAlerts = async () => {
-    setPanel(panel === "alerts" ? "" : "alerts");
-
-    if (panel === "alerts") return;
-
+  const loadAlerts = async () => {
     try {
-      const data = await api("/api/vehicle-documents?limit=100");
-      const soon = (data.documents || []).filter((doc) => {
+      const packs = await Promise.all([
+        api("/api/vehicle-documents?limit=100").catch(() => ({ documents: [] })),
+        api("/api/driver-documents?limit=100").catch(() => ({ documents: [] })),
+        api("/api/helper-documents?limit=100").catch(() => ({ documents: [] })),
+      ]);
+      const soon = packs.flatMap((pack) => pack.documents || []).filter((doc) => {
         if (!doc.expiry_date) return false;
         return new Date(doc.expiry_date).getTime() - Date.now() < 30 * 86400000;
       });
@@ -200,6 +223,29 @@ export default function Shell() {
       setAlertNote(error.message);
     }
   };
+
+  useEffect(() => {
+    loadAlerts();
+  }, []);
+
+  const openAlerts = async () => {
+    setPanel(panel === "alerts" ? "" : "alerts");
+    if (panel === "alerts") return;
+    await loadAlerts();
+  };
+
+  useEffect(() => {
+    if (!panel) return undefined;
+
+    const close = (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".pop-anchor")) {
+        setPanel("");
+      }
+    };
+
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [panel]);
 
   const signOut = async () => {
     await logout();
@@ -233,19 +279,28 @@ export default function Shell() {
         </div>
 
         <nav className="nav">
-          {NAV.filter((item) => !item.admin || ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(user?.user_type)).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              title={item.label}
-              className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
-              onClick={() => setMobileOpen(false)}
-            >
-              <Icon name={item.icon} />
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter((item) => !item.admin || ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(user?.user_type));
+            if (!items.length) return null;
+            return (
+              <div className="nav-group" key={group.label}>
+                <p className="nav-group-label">{group.label}</p>
+                {items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === "/"}
+                    title={item.label}
+                    className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <Icon name={item.icon} />
+                    <span className="nav-label">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-foot">
@@ -309,6 +364,7 @@ export default function Shell() {
           <div className="pop-anchor">
             <button className="icon-btn" type="button" aria-label="Notifications" onClick={openAlerts}>
               <Icon name="bell" />
+              {alerts.length ? <span className="badge">{alerts.length}</span> : null}
             </button>
             {panel === "alerts" ? (
               <div className="popover">
@@ -323,32 +379,60 @@ export default function Shell() {
             ) : null}
           </div>
 
+          <button
+            className="icon-btn"
+            type="button"
+            aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          >
+            <Icon name={theme === "light" ? "moon" : "sun"} />
+          </button>
+
           <div className="pop-anchor">
             <button
-              className="icon-btn"
+              className="user-chip user-chip-btn"
               type="button"
-              aria-label="Account"
+              aria-label="Open profile"
               onClick={() => setPanel(panel === "account" ? "" : "account")}
             >
-              <Icon name="gear" />
+              <div>
+                <strong>{user?.name || "User"}</strong>
+                <small>{roleLabel(user?.user_type)}</small>
+              </div>
+              <span className="avatar">{initials(user?.name)}</span>
             </button>
             {panel === "account" ? (
-              <div className="popover">
-                <h4>Account</h4>
+              <div className="popover profile-menu">
+                <h4>Profile</h4>
                 <p>{user?.name || "Signed in"}</p>
                 <p className="muted">{user?.email}</p>
                 <p className="muted">{user?.mobile || "No mobile"}</p>
                 <p className="muted">{companyName}</p>
+                <div className="theme-row">
+                  <span>Theme</span>
+                  <div className="theme-toggle">
+                    <button
+                      type="button"
+                      className={theme === "dark" ? "active" : ""}
+                      onClick={() => setTheme("dark")}
+                    >
+                      Dark
+                    </button>
+                    <button
+                      type="button"
+                      className={theme === "light" ? "active" : ""}
+                      onClick={() => setTheme("light")}
+                    >
+                      Light
+                    </button>
+                  </div>
+                </div>
+                <button className="menu-action" type="button" onClick={signOut}>
+                  <Icon name="logout" size={16} />
+                  Logout
+                </button>
               </div>
             ) : null}
-          </div>
-
-          <div className="user-chip">
-            <div>
-              <strong>{user?.name || "User"}</strong>
-              <small>{roleLabel(user?.user_type)}</small>
-            </div>
-            <span className="avatar">{initials(user?.name)}</span>
           </div>
         </header>
 

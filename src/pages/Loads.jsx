@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
+  ChipFilter,
   DataTable,
+  DetailList,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
   SearchField,
   Select,
   StatusPill,
+  ViewButton,
 } from "../components/ui";
-import { blankIssues, formatDate, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, statusList, tripLabel, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
 
 const STATUSES = ["RESERVED", "CREATED", "CANCELLED", "COMPLETED"];
@@ -72,10 +76,11 @@ export function ShipmentForm({ onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Bilty number" error={issues.bilty_number}>
+      <FormLegend />
+      <Field label="Bilty number" required error={issues.bilty_number}>
         <input value={form.bilty_number} onChange={set("bilty_number")} placeholder="BL-1001" />
       </Field>
-      <Field label="Status">
+      <Field label="Status" hint="bilties.status default RESERVED">
         <Select value={form.status} onChange={set("status")}>
           {STATUSES.map((status) => (
             <option key={status} value={status}>{status}</option>
@@ -111,24 +116,32 @@ export default function Loads() {
   const toast = useToast();
   const [query, setQuery] = useState(params.get("q") || "");
   const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState("");
+  const [detail, setDetail] = useState(null);
   const { data, loading, error, reload } = useResource(async () => {
-    const [bilties, clients] = await Promise.all([
-      api("/api/bilties?limit=100"),
-      api("/api/clients?limit=100"),
+    const [bilties, clients, trips] = await Promise.all([
+      fetchAll("/api/bilties", "bilties"),
+      fetchAll("/api/clients", "clients"),
+      fetchAll("/api/trips", "trips"),
     ]);
-    const names = new Map((clients.clients || []).map((client) => [String(client.id), client.name]));
+    const names = new Map(clients.rows.map((client) => [String(client.id), client.name]));
+    const tripsById = new Map(trips.rows.map((trip) => [String(trip.id), tripLabel(trip)]));
     return {
-      rows: (bilties.bilties || []).map((row) => ({
+      rows: bilties.rows.map((row) => ({
         ...row,
         client_name: names.get(String(row.client_id)) || "—",
+        trip_name: tripsById.get(String(row.trip_id)) || (row.trip_id ? `#${row.trip_id}` : "—"),
       })),
-      total: bilties.pagination?.total || 0,
+      total: bilties.total,
     };
   }, []);
 
   const filtered = useMemo(
-    () => (data?.rows || []).filter((row) => includesQuery(row, query, ["bilty_number", "status", "client_name"])),
-    [data, query]
+    () => (data?.rows || []).filter((row) => (
+      (!status || String(row.status) === status)
+      && includesQuery(row, query, ["bilty_number", "status", "client_name", "trip_name"])
+    )),
+    [data, query, status]
   );
   const pager = usePaged(filtered);
   const focus = useSearchFocus(params, filtered, pager.setPage);
@@ -145,27 +158,39 @@ export default function Loads() {
       <Banner>{error}</Banner>
       <article className="card table-card">
         <div className="card-head">
-          <h2>bilties {data ? <span className="count">{data.total}</span> : null}</h2>
+          <h2>Bilties {data ? <span className="count">{filtered.length}</span> : null}</h2>
           <SearchField value={query} onChange={(value) => { setQuery(value); pager.setPage(1); }} />
         </div>
+        <ChipFilter options={statusList(data?.rows)} value={status} onChange={(value) => { setStatus(value); pager.setPage(1); }} />
         {loading ? <p className="muted pad">Loading shipments...</p> : (
           <DataTable
             rows={pager.rows}
             highlightId={focus}
-            empty={query ? "No bilties match this search." : "No bilties yet."}
-            emptyAction={query ? null : { label: "New Bilty", onClick: () => setOpen(true) }}
+            empty={query || status ? "No bilties match this search." : "No bilties yet."}
+            emptyAction={query || status ? null : { label: "New Bilty", onClick: () => setOpen(true) }}
             columns={[
               { key: "bilty_number", label: "Bilty number", render: (row) => row.bilty_number },
               { key: "client", label: "Client", render: (row) => row.client_name },
-              { key: "trip", label: "Trip", render: (row) => row.trip_id || "—" },
+              { key: "trip", label: "Trip", render: (row) => row.trip_name },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} /> },
               { key: "created", label: "Created", render: (row) => formatDate(row.created_at) },
-              { key: "updated", label: "Updated", render: (row) => formatDate(row.updated_at) },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail(row)} /> },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
+      {detail ? (
+        <Modal title={detail.bilty_number} onClose={() => setDetail(null)}>
+          <DetailList rows={[
+            ["Client", detail.client_name],
+            ["Trip", detail.trip_name],
+            ["Status", detail.status],
+            ["Created", formatDate(detail.created_at)],
+            ["Updated", formatDate(detail.updated_at)],
+          ]} />
+        </Modal>
+      ) : null}
       {open ? (
         <Modal title="New Bilty" onClose={() => setOpen(false)}>
           <ShipmentForm

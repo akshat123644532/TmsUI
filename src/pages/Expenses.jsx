@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -83,7 +84,8 @@ function ExpenseForm({ trips, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Trip" error={issues.trip_id}>
+      <FormLegend />
+      <Field label="Trip" required error={issues.trip_id}>
         <Select value={form.trip_id} onChange={set("trip_id")}>
           <option value="">Select trip</option>
           {trips.map((trip) => (
@@ -91,14 +93,14 @@ function ExpenseForm({ trips, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Expense type" error={issues.expense_type}>
+      <Field label="Expense type" required error={issues.expense_type}>
         <Select value={form.expense_type} onChange={set("expense_type")}>
           {EXPENSE_TYPES.map((type) => (
             <option key={type} value={type}>{type}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Requested amount" error={issues.requested_amount}>
+      <Field label="Requested amount" required error={issues.requested_amount}>
         <input type="number" min="0.01" step="0.01" value={form.requested_amount} onChange={set("requested_amount")} />
       </Field>
       <Field label="Receipt URL">
@@ -107,6 +109,7 @@ function ExpenseForm({ trips, onClose, onCreated }) {
       <Field label="Remarks">
         <input value={form.remarks} onChange={set("remarks")} />
       </Field>
+      <p className="form-hint span-2">approved_amount is set when status becomes APPROVED.</p>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Add expense" />
     </form>
@@ -162,7 +165,8 @@ function AdvanceForm({ trips, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Trip" error={issues.trip_id}>
+      <FormLegend />
+      <Field label="Trip" required error={issues.trip_id}>
         <Select value={form.trip_id} onChange={set("trip_id")}>
           <option value="">Select trip</option>
           {trips.map((trip) => (
@@ -170,20 +174,20 @@ function AdvanceForm({ trips, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Amount" error={issues.amount}>
+      <Field label="Amount" required error={issues.amount}>
         <input type="number" min="0.01" step="0.01" value={form.amount} onChange={set("amount")} />
       </Field>
       <Field label="Payment date">
         <input type="date" value={form.payment_date} onChange={set("payment_date")} />
       </Field>
-      <Field label="Method">
+      <Field label="Payment method">
         <Select value={form.payment_method} onChange={set("payment_method")}>
           {PAYMENT_METHODS.map((method) => (
             <option key={method} value={method}>{method.replaceAll("_", " ")}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Reference">
+      <Field label="Reference no">
         <input value={form.reference_no} onChange={set("reference_no")} />
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
@@ -200,14 +204,14 @@ export default function Expenses() {
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
     const [expenses, advances, trips] = await Promise.all([
-      api("/api/trip-expenses?limit=100"),
-      api("/api/trip-advances?limit=100"),
-      api("/api/trips?limit=100"),
+      fetchAll("/api/trip-expenses", "expenses"),
+      fetchAll("/api/trip-advances", "advances"),
+      fetchAll("/api/trips", "trips"),
     ]);
     return {
-      expenses: expenses.expenses || [],
-      advances: advances.advances || [],
-      trips: trips.trips || [],
+      expenses: expenses.rows,
+      advances: advances.rows,
+      trips: trips.rows,
     };
   }, []);
 
@@ -295,6 +299,7 @@ export default function Expenses() {
               { key: "requested", label: "Requested", align: "right", render: (row) => money(row.requested_amount) },
               { key: "approved", label: "Approved", align: "right", render: (row) => row.approved_amount == null ? "—" : money(row.approved_amount) },
               { key: "remarks", label: "Remarks", render: (row) => row.remarks || "—" },
+              { key: "receipt", label: "Receipt", render: (row) => row.receipt_url ? <a className="text-link" href={row.receipt_url} target="_blank" rel="noreferrer">Open</a> : "—" },
               {
                 key: "status",
                 label: "Status",

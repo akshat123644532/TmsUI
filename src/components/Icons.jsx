@@ -183,6 +183,19 @@ export function Icon({ name, size = 18 }) {
           <path d="M4 7h16M4 12h16M4 17h16" />
         </svg>
       );
+    case "sun":
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+        </svg>
+      );
+    case "moon":
+      return (
+        <svg {...props}>
+          <path d="M20 14.5A7.5 7.5 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5Z" />
+        </svg>
+      );
     default:
       return null;
   }

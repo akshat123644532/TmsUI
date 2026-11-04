@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -39,7 +40,7 @@ function PaymentForm({ invoices, onClose, onCreated }) {
     payment_date: today(),
     gross_amount: "",
     deduction_amount: "",
-    payment_method: "NEFT",
+    payment_method: "UPI",
     reference_no: "",
   });
   const set = (key) => (event) => {
@@ -54,7 +55,6 @@ function PaymentForm({ invoices, onClose, onCreated }) {
       ["invoice_id", form.invoice_id, "Select an invoice"],
       ["payment_date", form.payment_date, "Choose a payment date"],
       ["gross_amount", form.gross_amount, "Enter the gross amount"],
-      ["payment_method", form.payment_method, "Select a method"],
     ]);
     if (!nextIssues.gross_amount && num(form.gross_amount) <= 0) {
       nextIssues.gross_amount = "Enter an amount greater than 0";
@@ -73,7 +73,7 @@ function PaymentForm({ invoices, onClose, onCreated }) {
           gross_amount: num(form.gross_amount),
           deduction_amount: num(form.deduction_amount),
           net_received_amount: net,
-          payment_method: form.payment_method,
+          payment_method: form.payment_method || null,
           reference_no: form.reference_no.trim() || null,
         },
       });
@@ -87,7 +87,8 @@ function PaymentForm({ invoices, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Invoice" error={issues.invoice_id}>
+      <FormLegend />
+      <Field label="Invoice" required error={issues.invoice_id}>
         <Select value={form.invoice_id} onChange={set("invoice_id")}>
           <option value="">Select a sent invoice</option>
           {payable.map((invoice) => (
@@ -97,20 +98,21 @@ function PaymentForm({ invoices, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Payment date" error={issues.payment_date}>
+      <Field label="Payment date" required error={issues.payment_date}>
         <input type="date" value={form.payment_date} onChange={set("payment_date")} />
       </Field>
-      <Field label="Gross amount" error={issues.gross_amount}>
+      <Field label="Gross amount" required error={issues.gross_amount} hint="invoice_payments.gross_amount">
         <input type="number" min="0.01" step="0.01" value={form.gross_amount} onChange={set("gross_amount")} />
       </Field>
       <Field label="Deduction amount">
         <input type="number" min="0" step="0.01" value={form.deduction_amount} onChange={set("deduction_amount")} />
       </Field>
-      <Field label="Net received">
+      <Field label="Net received" hint="computed · net_received_amount">
         <input value={money(net)} readOnly />
       </Field>
-      <Field label="Method" error={issues.payment_method}>
+      <Field label="Payment method" hint="nullable in table">
         <Select value={form.payment_method} onChange={set("payment_method")}>
+          <option value="">None</option>
           {PAYMENT_METHODS.map((method) => (
             <option key={method} value={method}>{method.replaceAll("_", " ")}</option>
           ))}
@@ -174,7 +176,8 @@ function DeductionForm({ payments, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Payment" error={issues.invoice_payment_id}>
+      <FormLegend />
+      <Field label="Payment" required error={issues.invoice_payment_id}>
         <Select value={form.invoice_payment_id} onChange={set("invoice_payment_id")}>
           <option value="">Select payment</option>
           {payments.map((payment) => (
@@ -184,14 +187,14 @@ function DeductionForm({ payments, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Deduction type" error={issues.deduction_type}>
+      <Field label="Deduction type" required error={issues.deduction_type}>
         <Select value={form.deduction_type} onChange={set("deduction_type")}>
           {DEDUCTION_TYPES.map((type) => (
             <option key={type} value={type}>{type}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Amount" error={issues.amount}>
+      <Field label="Amount" required error={issues.amount}>
         <input type="number" min="0.01" step="0.01" value={form.amount} onChange={set("amount")} />
       </Field>
       <Field label="Remarks">
@@ -212,14 +215,14 @@ export default function Payments() {
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
     const [payments, deductions, invoices] = await Promise.all([
-      api("/api/invoice-payments?limit=100"),
-      api("/api/invoice-payment-deductions?limit=100"),
-      api("/api/invoices?limit=100"),
+      fetchAll("/api/invoice-payments", "payments"),
+      fetchAll("/api/invoice-payment-deductions", "deductions"),
+      fetchAll("/api/invoices", "invoices"),
     ]);
     return {
-      payments: payments.payments || [],
-      deductions: deductions.deductions || [],
-      invoices: invoices.invoices || [],
+      payments: payments.rows,
+      deductions: deductions.rows,
+      invoices: invoices.rows,
     };
   }, []);
 

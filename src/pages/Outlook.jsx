@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { fetchAll } from "../api";
 import { Banner, EmptyState, PageHeader, StatusPill } from "../components/ui";
 import { formatDate, useResource } from "../lib";
 
@@ -10,14 +10,14 @@ export default function Outlook({ embedded = false }) {
   const navigate = useNavigate();
   const { data, loading, error } = useResource(async () => {
     const [trips, vehicles, drivers] = await Promise.all([
-      api("/api/trips?limit=100"),
-      api("/api/vehicles?limit=100"),
-      api("/api/drivers?limit=100"),
+      fetchAll("/api/trips", "trips"),
+      fetchAll("/api/vehicles", "vehicles"),
+      fetchAll("/api/drivers", "drivers"),
     ]);
     return {
-      trips: trips.trips || [],
-      vehicles: new Map((vehicles.vehicles || []).map((row) => [String(row.id), row.registration_no])),
-      drivers: new Map((drivers.drivers || []).map((row) => [String(row.id), row.name])),
+      trips: trips.rows,
+      vehicles: new Map(vehicles.rows.map((row) => [String(row.id), row.registration_no])),
+      drivers: new Map(drivers.rows.map((row) => [String(row.id), row.name])),
     };
   }, []);
 

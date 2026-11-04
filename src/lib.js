@@ -182,7 +182,15 @@ export function includesQuery(row, query, fields) {
   return fields.some((field) => String(row[field] ?? "").toLowerCase().includes(needle));
 }
 
-export function usePaged(items, pageSize = 8) {
+export function prettyStatus(value) {
+  return String(value ?? "—").replaceAll("_", " ");
+}
+
+export function statusList(rows, key = "status") {
+  return [...new Set((rows || []).map((row) => row[key]).filter((value) => value !== undefined && value !== null && value !== ""))].map(String);
+}
+
+export function usePaged(items, pageSize = 10) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil((items?.length || 0) / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -224,6 +232,27 @@ export function tripLabel(trip) {
 export const PAYMENT_METHODS = ["CASH", "UPI", "NEFT", "CHEQUE", "BANK_TRANSFER"];
 export const EXPENSE_TYPES = ["FUEL", "TOLL", "PARKING", "FOOD", "REPAIR", "OTHER"];
 export const DEDUCTION_TYPES = ["TDS", "OTHER"];
+
+/** Create-form required fields from phpMyAdmin `tms` dump (NOT NULL, no useful default). */
+export const TABLE_REQUIRED = {
+  clients: ["name"],
+  drivers: ["name", "mobile"],
+  helpers: ["name", "mobile"],
+  vehicles: ["vehicle_type_id", "registration_no"],
+  vehicle_types: ["name"],
+  vehicle_assignments: ["vehicle_id", "start_date"],
+  documents: ["owner_id", "document_type"],
+  bilties: ["bilty_number"],
+  trips: ["vehicle_id", "driver_id", "source", "destination"],
+  trip_advances: ["trip_id", "amount"],
+  trip_expenses: ["trip_id", "expense_type", "requested_amount"],
+  trip_settlements: ["trip_id"],
+  trip_final_reports: ["trip_id", "report_no"],
+  invoices: ["client_id", "invoice_number", "invoice_date"],
+  invoice_payments: ["invoice_id", "payment_date", "gross_amount"],
+  invoice_payment_deductions: ["invoice_payment_id", "deduction_type", "amount"],
+  users: ["name", "mobile", "password", "user_type"],
+};
 
 export const NEXT_STATUS = {
   invoice: {

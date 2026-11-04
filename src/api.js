@@ -81,7 +81,8 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error("Unable to reach the TMS API. Start the backend on port 5000.");
+    const target = BASE || "https://tms-t8ln.onrender.com";
+    throw new Error(`Unable to reach the TMS API at ${target}. The Render service may be waking up — retry in 30s.`);
   }
 
   const data = await res.json().catch(() => null);

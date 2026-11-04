@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
+  DetailList,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -13,6 +15,7 @@ import {
   Select,
   StatusPill,
   Tabs,
+  ViewButton,
 } from "../components/ui";
 import { blankIssues, formatDate, hasIssues, includesQuery, today, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
@@ -25,6 +28,7 @@ function VehicleForm({ types, onClose, onCreated }) {
     vehicle_type_id: types[0] ? String(types[0].id) : "",
     registration_no: "",
     capacity: "",
+    status: "1",
   });
 
   const submit = async (event) => {
@@ -46,6 +50,7 @@ function VehicleForm({ types, onClose, onCreated }) {
           vehicle_type_id: form.vehicle_type_id,
           registration_no: form.registration_no.trim(),
           capacity: form.capacity === "" ? null : Number(form.capacity),
+          status: Number(form.status),
         },
       });
       onCreated();
@@ -58,7 +63,8 @@ function VehicleForm({ types, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Type" error={issues.vehicle_type_id}>
+      <FormLegend />
+      <Field label="Vehicle type" required error={issues.vehicle_type_id}>
         <Select value={form.vehicle_type_id} onChange={(event) => { setForm({ ...form, vehicle_type_id: event.target.value }); setIssues((current) => ({ ...current, vehicle_type_id: "" })); }}>
           <option value="">Select type</option>
           {types.map((type) => (
@@ -66,11 +72,17 @@ function VehicleForm({ types, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Registration" error={issues.registration_no}>
+      <Field label="Registration no" required error={issues.registration_no}>
         <input value={form.registration_no} onChange={(event) => { setForm({ ...form, registration_no: event.target.value }); setIssues((current) => ({ ...current, registration_no: "" })); }} placeholder="MH01AB1234" />
       </Field>
       <Field label="Capacity">
         <input type="number" min="0" step="0.01" value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} placeholder="16.00" />
+      </Field>
+      <Field label="Status">
+        <Select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </Select>
       </Field>
       {types.length === 0 ? <p className="form-error span-2">Add a vehicle type before registering a vehicle.</p> : null}
       {error ? <p className="form-error span-2">{error}</p> : null}
@@ -81,6 +93,7 @@ function VehicleForm({ types, onClose, onCreated }) {
 
 function TypeForm({ onClose, onCreated }) {
   const [name, setName] = useState("");
+  const [status, setStatus] = useState("1");
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
@@ -95,7 +108,7 @@ function TypeForm({ onClose, onCreated }) {
     setError("");
 
     try {
-      await api("/api/vehicle-types", { method: "POST", body: { name: name.trim() } });
+      await api("/api/vehicle-types", { method: "POST", body: { name: name.trim(), status: Number(status) } });
       onCreated();
     } catch (err) {
       setError(err.message);
@@ -106,8 +119,15 @@ function TypeForm({ onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Type name" error={issues.name}>
+      <FormLegend />
+      <Field label="Type name" required error={issues.name}>
         <input value={name} onChange={(event) => { setName(event.target.value); setIssues({}); }} placeholder="Container" />
+      </Field>
+      <Field label="Status">
+        <Select value={status} onChange={(event) => setStatus(event.target.value)}>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </Select>
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Add type" />
@@ -125,6 +145,7 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
     helper_id: "",
     start_date: today(),
     end_date: "",
+    is_active: "1",
   });
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -152,7 +173,7 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
           helper_id: form.helper_id || null,
           start_date: form.start_date,
           end_date: form.end_date || null,
-          is_active: 1,
+          is_active: Number(form.is_active),
         },
       });
       onCreated();
@@ -165,7 +186,8 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Vehicle" error={issues.vehicle_id}>
+      <FormLegend />
+      <Field label="Vehicle" required error={issues.vehicle_id}>
         <Select value={form.vehicle_id} onChange={set("vehicle_id")}>
           <option value="">Select vehicle</option>
           {vehicles.map((row) => <option key={row.id} value={row.id}>{row.registration_no}</option>)}
@@ -183,11 +205,17 @@ function AssignmentForm({ vehicles, drivers, helpers, onClose, onCreated }) {
           {helpers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
         </Select>
       </Field>
-      <Field label="Start date" error={issues.start_date}>
+      <Field label="Start date" required error={issues.start_date}>
         <input type="date" value={form.start_date} onChange={set("start_date")} />
       </Field>
       <Field label="End date">
         <input type="date" value={form.end_date} onChange={set("end_date")} />
+      </Field>
+      <Field label="Active">
+        <Select value={form.is_active} onChange={set("is_active")}>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </Select>
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Assign crew" />
@@ -201,21 +229,22 @@ export default function Fleet() {
   const [tab, setTab] = useState("vehicles");
   const [query, setQuery] = useState(params.get("q") || "");
   const [modal, setModal] = useState("");
+  const [detail, setDetail] = useState(null);
   const { data, loading, error, reload } = useResource(async () => {
     const [vehicles, types, assignments, drivers, helpers] = await Promise.all([
-      api("/api/vehicles?limit=100"),
-      api("/api/vehicle-types?limit=100"),
-      api("/api/vehicle-assignments?limit=100"),
-      api("/api/drivers?limit=100"),
-      api("/api/helpers?limit=100"),
+      fetchAll("/api/vehicles", "vehicles"),
+      fetchAll("/api/vehicle-types", "vehicleTypes"),
+      fetchAll("/api/vehicle-assignments", "assignments"),
+      fetchAll("/api/drivers", "drivers"),
+      fetchAll("/api/helpers", "helpers"),
     ]);
     return {
-      vehicles: vehicles.vehicles || [],
-      types: types.vehicleTypes || [],
-      assignments: assignments.assignments || [],
-      drivers: drivers.drivers || [],
-      helpers: helpers.helpers || [],
-      vehicleTotal: vehicles.pagination?.total || 0,
+      vehicles: vehicles.rows,
+      types: types.rows,
+      assignments: assignments.rows,
+      drivers: drivers.rows,
+      helpers: helpers.rows,
+      vehicleTotal: vehicles.total,
     };
   }, []);
 
@@ -310,7 +339,9 @@ export default function Fleet() {
               { key: "driver", label: "Driver", render: (row) => row.driver_name },
               { key: "helper", label: "Helper", render: (row) => row.helper_name },
               { key: "start", label: "Start", render: (row) => formatDate(row.start_date) },
+              { key: "end", label: "End", render: (row) => formatDate(row.end_date) },
               { key: "active", label: "Active", render: (row) => <StatusPill value={row.is_active} active /> },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail({ kind: "assignment", row })} /> },
             ]}
           />
         ) : (
@@ -324,11 +355,33 @@ export default function Fleet() {
               { key: "type", label: "Type", render: (row) => row.type_name },
               { key: "capacity", label: "Capacity", render: (row) => row.capacity || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail({ kind: "vehicle", row })} /> },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
+
+      {detail ? (
+        <Modal title={detail.kind === "vehicle" ? detail.row.registration_no : detail.row.vehicle_name} onClose={() => setDetail(null)}>
+          {detail.kind === "vehicle" ? (
+            <DetailList rows={[
+              ["Type", detail.row.type_name],
+              ["Capacity", detail.row.capacity],
+              ["Status", Number(detail.row.status) === 1 ? "Active" : "Inactive"],
+            ]} />
+          ) : (
+            <DetailList rows={[
+              ["Vehicle", detail.row.vehicle_name],
+              ["Driver", detail.row.driver_name],
+              ["Helper", detail.row.helper_name],
+              ["Start", formatDate(detail.row.start_date)],
+              ["End", formatDate(detail.row.end_date)],
+              ["Active", Number(detail.row.is_active) === 1 ? "Yes" : "No"],
+            ]} />
+          )}
+        </Modal>
+      ) : null}
 
       {modal === "vehicles" && data ? (
         <Modal title="New Vehicle" onClose={() => setModal("")}>

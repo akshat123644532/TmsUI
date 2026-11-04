@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
+  DetailList,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
   SearchField,
+  Select,
   StatusPill,
   Tabs,
+  ViewButton,
 } from "../components/ui";
 import { blankIssues, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
@@ -26,6 +30,7 @@ function PersonForm({ kind, onClose, onCreated }) {
     email: "",
     address: "",
     license_number: "",
+    status: "1",
   });
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -51,8 +56,8 @@ function PersonForm({ kind, onClose, onCreated }) {
       mobile: form.mobile.trim(),
       email: form.email.trim() || null,
       address: form.address.trim() || null,
+      status: Number(form.status),
     };
-
     if (kind === "driver" && form.license_number.trim()) {
       body.license_number = form.license_number.trim();
     }
@@ -69,11 +74,12 @@ function PersonForm({ kind, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Name" error={issues.name}>
+      <FormLegend />
+      <Field label="Name" required error={issues.name}>
         <input value={form.name} onChange={set("name")} />
       </Field>
-      <Field label="Mobile" error={issues.mobile}>
-        <input value={form.mobile} onChange={set("mobile")} />
+      <Field label="Mobile" required error={issues.mobile}>
+        <input value={form.mobile} onChange={set("mobile")} placeholder="9876543210" />
       </Field>
       <Field label="Email">
         <input type="email" value={form.email} onChange={set("email")} />
@@ -82,10 +88,16 @@ function PersonForm({ kind, onClose, onCreated }) {
         <input value={form.address} onChange={set("address")} />
       </Field>
       {kind === "driver" ? (
-        <Field label="License number">
-          <input value={form.license_number} onChange={set("license_number")} placeholder="Saved as a license document" />
+        <Field label="License number" hint="Saved as driver_documents LICENSE">
+          <input value={form.license_number} onChange={set("license_number")} placeholder="DL-..." />
         </Field>
       ) : null}
+      <Field label="Status">
+        <Select value={form.status} onChange={set("status")}>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </Select>
+      </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel={kind === "driver" ? "Add driver" : "Add helper"} />
     </form>
@@ -98,16 +110,17 @@ export default function Staff() {
   const [tab, setTab] = useState("drivers");
   const [query, setQuery] = useState(params.get("q") || "");
   const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
   const { data, loading, error, reload } = useResource(async () => {
     const [drivers, helpers] = await Promise.all([
-      api("/api/drivers?limit=100"),
-      api("/api/helpers?limit=100"),
+      fetchAll("/api/drivers", "drivers"),
+      fetchAll("/api/helpers", "helpers"),
     ]);
     return {
-      drivers: drivers.drivers || [],
-      helpers: helpers.helpers || [],
-      driverTotal: drivers.pagination?.total || 0,
-      helperTotal: helpers.pagination?.total || 0,
+      drivers: drivers.rows,
+      helpers: helpers.rows,
+      driverTotal: drivers.total,
+      helperTotal: helpers.total,
     };
   }, []);
 
@@ -157,11 +170,22 @@ export default function Staff() {
               { key: "email", label: "Email", render: (row) => row.email || "—" },
               { key: "address", label: "Address", render: (row) => row.address || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail(row)} /> },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
+      {detail ? (
+        <Modal title={detail.name} onClose={() => setDetail(null)}>
+          <DetailList rows={[
+            ["Mobile", detail.mobile],
+            ["Email", detail.email],
+            ["Address", detail.address],
+            ["Status", Number(detail.status) === 1 ? "Active" : "Inactive"],
+          ]} />
+        </Modal>
+      ) : null}
       {open ? (
         <Modal title={tab === "drivers" ? "New Driver" : "New Helper"} onClose={() => setOpen(false)}>
           <PersonForm

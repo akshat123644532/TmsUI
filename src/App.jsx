@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
+import { ThemeProvider } from "./theme";
 import { ToastProvider } from "./toast";
 import Shell from "./components/Shell";
 import Login from "./pages/Login";
@@ -16,6 +17,7 @@ import Expenses from "./pages/Expenses";
 import Settlements from "./pages/Settlements";
 import Payments from "./pages/Payments";
 import Reports from "./pages/Reports";
+import Access from "./pages/Access";
 
 function Private() {
   const { authed } = useAuth();
@@ -31,6 +33,7 @@ function Guest({ children }) {
 
 export default function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <ToastProvider>
       <BrowserRouter>
@@ -40,6 +43,7 @@ export default function App() {
           <Route element={<Private />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/access" element={<Access />} />
             <Route path="/fleet" element={<Fleet />} />
             <Route path="/staff" element={<Staff />} />
             <Route path="/loads" element={<Loads />} />
@@ -58,5 +62,6 @@ export default function App() {
       </BrowserRouter>
       </ToastProvider>
     </AuthProvider>
+    </ThemeProvider>
   );
 }

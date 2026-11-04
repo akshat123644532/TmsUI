@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -79,7 +80,8 @@ function ReportForm({ trips, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Trip" error={issues.trip_id}>
+      <FormLegend />
+      <Field label="Trip" required error={issues.trip_id}>
         <Select value={form.trip_id} onChange={set("trip_id")}>
           <option value="">Select trip</option>
           {trips.map((trip) => (
@@ -87,7 +89,7 @@ function ReportForm({ trips, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Report no" error={issues.report_no}>
+      <Field label="Report no" required error={issues.report_no}>
         <input value={form.report_no} onChange={set("report_no")} placeholder="FR-1001" />
       </Field>
       <Field label="Odometer start">
@@ -108,6 +110,7 @@ function ReportForm({ trips, onClose, onCreated }) {
       <Field label="Remarks">
         <input value={form.remarks} onChange={set("remarks")} />
       </Field>
+      <p className="form-hint span-2">submitted_by / verified_by / verified_at are set by the system on submit and verify.</p>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Submit report" />
     </form>
@@ -121,12 +124,12 @@ export default function Reports() {
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
     const [reports, trips] = await Promise.all([
-      api("/api/trip-final-reports?limit=100"),
-      api("/api/trips?limit=100"),
+      fetchAll("/api/trip-final-reports", "reports"),
+      fetchAll("/api/trips", "trips"),
     ]);
     return {
-      reports: reports.reports || [],
-      trips: trips.trips || [],
+      reports: reports.rows,
+      trips: trips.rows,
     };
   }, []);
 
@@ -179,6 +182,7 @@ export default function Reports() {
               { key: "km", label: "Distance km", render: (row) => row.total_distance_km ?? "—" },
               { key: "load", label: "Loading", render: (row) => formatDate(row.loading_date) },
               { key: "unload", label: "Unloading", render: (row) => formatDate(row.unloading_date) },
+              { key: "verified", label: "Verified", render: (row) => formatDate(row.verified_at) },
               {
                 key: "status",
                 label: "Status",

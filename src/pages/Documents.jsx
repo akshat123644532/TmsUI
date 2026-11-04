@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -46,6 +47,7 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
     document_url: "",
     issue_date: "",
     expiry_date: "",
+    status: "1",
   });
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -70,6 +72,7 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
       document_url: form.document_url.trim() || null,
       issue_date: form.issue_date || null,
       expiry_date: form.expiry_date || null,
+      status: Number(form.status),
       vehicle_id: kind === "vehicle" ? form.owner_id : undefined,
     };
 
@@ -91,7 +94,8 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label={kind === "vehicle" ? "Vehicle" : kind === "driver" ? "Driver" : "Helper"} error={issues.owner_id}>
+      <FormLegend />
+      <Field label={kind === "vehicle" ? "Vehicle" : kind === "driver" ? "Driver" : "Helper"} required error={issues.owner_id}>
         <Select value={form.owner_id} onChange={set("owner_id")}>
           <option value="">Select</option>
           {owners.map((owner) => (
@@ -101,13 +105,13 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Document type" error={issues.document_type}>
+      <Field label="Document type" required error={issues.document_type}>
         <input value={form.document_type} onChange={set("document_type")} placeholder="RC, INSURANCE, LICENSE" />
       </Field>
-      <Field label="Number">
+      <Field label="Document number">
         <input value={form.document_number} onChange={set("document_number")} />
       </Field>
-      <Field label="File URL">
+      <Field label="Document URL">
         <input value={form.document_url} onChange={set("document_url")} placeholder="https://" />
       </Field>
       <Field label="Issue date">
@@ -115,6 +119,12 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
       </Field>
       <Field label="Expiry date">
         <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
+      </Field>
+      <Field label="Status">
+        <Select value={form.status} onChange={set("status")}>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </Select>
       </Field>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Save document" />
@@ -129,20 +139,20 @@ export default function Documents() {
   const [open, setOpen] = useState(false);
   const { data, loading, error, reload } = useResource(async () => {
     const [vehicles, drivers, helpers, vehicleDocs] = await Promise.all([
-      api("/api/vehicles?limit=100"),
-      api("/api/drivers?limit=100"),
-      api("/api/helpers?limit=100"),
-      api("/api/vehicle-documents?limit=100"),
+      fetchAll("/api/vehicles", "vehicles"),
+      fetchAll("/api/drivers", "drivers"),
+      fetchAll("/api/helpers", "helpers"),
+      fetchAll("/api/vehicle-documents", "documents"),
     ]);
-    const vehicleRows = vehicles.vehicles || [];
+    const vehicleRows = vehicles.rows;
     const regs = new Map(vehicleRows.map((row) => [String(row.id), row.registration_no]));
     const [driverDocs, helperDocs] = await Promise.all([
-      loadOwnedDocs(drivers.drivers || [], "/api/driver-documents", "Driver"),
-      loadOwnedDocs(helpers.helpers || [], "/api/helper-documents", "Helper"),
+      loadOwnedDocs(drivers.rows, "/api/driver-documents", "Driver"),
+      loadOwnedDocs(helpers.rows, "/api/helper-documents", "Helper"),
     ]);
 
     return {
-      vehicle: (vehicleDocs.documents || []).map((doc) => ({
+      vehicle: (vehicleDocs.rows || []).map((doc) => ({
         ...doc,
         owner: regs.get(String(doc.vehicle_id)) || `#${doc.vehicle_id}`,
         _key: `v-${doc.id}`,
@@ -151,8 +161,8 @@ export default function Documents() {
       helper: helperDocs,
       owners: {
         vehicle: vehicleRows,
-        driver: drivers.drivers || [],
-        helper: helpers.helpers || [],
+        driver: drivers.rows,
+        helper: helpers.rows,
       },
     };
   }, []);
@@ -197,7 +207,9 @@ export default function Documents() {
               { key: "owner", label: "Owner", render: (row) => row.owner },
               { key: "type", label: "Type", render: (row) => row.document_type },
               { key: "number", label: "Number", render: (row) => row.document_number || "—" },
+              { key: "issue", label: "Issue", render: (row) => formatDate(row.issue_date) },
               { key: "expiry", label: "Expiry", render: (row) => formatDate(row.expiry_date) },
+              { key: "url", label: "File", render: (row) => row.document_url ? <a className="text-link" href={row.document_url} target="_blank" rel="noreferrer">Open</a> : "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
             ]}
           />

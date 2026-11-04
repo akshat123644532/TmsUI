@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
   DataTable,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -57,7 +58,8 @@ function SettlementForm({ trips, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Trip" error={issues.trip_id}>
+      <FormLegend />
+      <Field label="Trip" required error={issues.trip_id}>
         <Select
           value={form.trip_id}
           onChange={(event) => {
@@ -74,7 +76,9 @@ function SettlementForm({ trips, onClose, onCreated }) {
       <Field label="Remarks">
         <input value={form.remarks} onChange={(event) => setForm({ ...form, remarks: event.target.value })} />
       </Field>
-      <p className="form-hint span-2">Totals are taken from approved advances and expenses on that trip.</p>
+      <p className="form-hint span-2">
+        Only trip_id is required. total_advance / total_expenses / final_amount / balance_amount default 0 and are filled from approved advances &amp; expenses. status defaults to PENDING.
+      </p>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Create settlement" />
     </form>
@@ -88,12 +92,12 @@ export default function Settlements() {
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
     const [settlements, trips] = await Promise.all([
-      api("/api/trip-settlements?limit=100"),
-      api("/api/trips?limit=100"),
+      fetchAll("/api/trip-settlements", "settlements"),
+      fetchAll("/api/trips", "trips"),
     ]);
     return {
-      settlements: settlements.settlements || [],
-      trips: trips.trips || [],
+      settlements: settlements.rows,
+      trips: trips.rows,
     };
   }, []);
 

@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api";
+import { api, fetchAll } from "../api";
 import {
   Banner,
+  ChipFilter,
   DataTable,
+  DetailList,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
   SearchField,
   Select,
   StatusNext,
+  ViewButton,
 } from "../components/ui";
-import { blankIssues, formatDate, hasIssues, includesQuery, money, NEXT_STATUS, num, today, usePaged, useResource, useSearchFocus } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, money, NEXT_STATUS, num, statusList, today, tripLabel, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
 
 function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
@@ -59,15 +63,22 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
           invoice_date: header.invoice_date,
           tax_amount: num(header.tax_amount),
           deduction_amount: num(header.deduction_amount),
-          items: items.map((item) => ({
-            description: item.description || null,
-            trip_id: item.trip_id || null,
-            bilty_id: item.bilty_id || null,
-            freight: num(item.freight),
-            detention: num(item.detention),
-            hamali: num(item.hamali),
-            other_charges: num(item.other_charges),
-          })),
+          items: items.map((item) => {
+            const freight = num(item.freight);
+            const detention = num(item.detention);
+            const hamali = num(item.hamali);
+            const other_charges = num(item.other_charges);
+            return {
+              description: item.description || null,
+              trip_id: item.trip_id || null,
+              bilty_id: item.bilty_id || null,
+              freight,
+              detention,
+              hamali,
+              other_charges,
+              item_total: freight + detention + hamali + other_charges,
+            };
+          }),
         },
       });
       onCreated();
@@ -86,8 +97,9 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="stack" noValidate>
+      <FormLegend />
       <div className="form-grid">
-        <Field label="Client" error={issues.client_id}>
+        <Field label="Client" required error={issues.client_id}>
           <Select
             value={header.client_id}
             onChange={(event) => {
@@ -101,7 +113,7 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
             ))}
           </Select>
         </Field>
-        <Field label="Invoice number" error={issues.invoice_number}>
+        <Field label="Invoice number" required error={issues.invoice_number}>
           <input
             value={header.invoice_number}
             onChange={(event) => {
@@ -111,7 +123,7 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
             placeholder="INV-1001"
           />
         </Field>
-        <Field label="Invoice date" error={issues.invoice_date}>
+        <Field label="Invoice date" required error={issues.invoice_date}>
           <input
             type="date"
             value={header.invoice_date}
@@ -121,7 +133,7 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
             }}
           />
         </Field>
-        <Field label="Tax">
+        <Field label="Tax amount" hint="invoices.tax_amount · default 0">
           <input
             type="number"
             min="0"
@@ -130,7 +142,7 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
             onChange={(event) => setHeader({ ...header, tax_amount: event.target.value })}
           />
         </Field>
-        <Field label="Deduction">
+        <Field label="Deduction amount" hint="invoices.deduction_amount · default 0">
           <input
             type="number"
             min="0"
@@ -140,7 +152,8 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
           />
         </Field>
       </div>
-
+      <p className="form-hint">status always starts as DRAFT · taxable/subtotal/total/balance are calculated from line items</p>
+      <p className="form-hint">invoice_items: trip_id, bilty_id, description, freight, detention, hamali, other_charges (item_total auto)</p>
       {items.map((item, index) => (
         <div className="line-card" key={index}>
           <div className="form-grid">
@@ -175,6 +188,9 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
                 ))}
               </Select>
             </Field>
+            <Field label="Line total" hint="auto">
+              <input readOnly value={money(num(item.freight) + num(item.detention) + num(item.hamali) + num(item.other_charges))} />
+            </Field>
           </div>
         </div>
       ))}
@@ -200,20 +216,22 @@ export default function Invoices() {
   const toast = useToast();
   const [query, setQuery] = useState(params.get("q") || "");
   const [modal, setModal] = useState("");
+  const [status, setStatus] = useState("");
+  const [detail, setDetail] = useState(null);
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
     const [invoices, clients, trips, bilties] = await Promise.all([
-      api("/api/invoices?limit=100"),
-      api("/api/clients?limit=100"),
-      api("/api/trips?limit=100"),
-      api("/api/bilties?limit=100"),
+      fetchAll("/api/invoices", "invoices"),
+      fetchAll("/api/clients", "clients"),
+      fetchAll("/api/trips", "trips"),
+      fetchAll("/api/bilties", "bilties"),
     ]);
     return {
-      invoices: invoices.invoices || [],
-      clients: clients.clients || [],
-      trips: trips.trips || [],
-      bilties: bilties.bilties || [],
-      total: invoices.pagination?.total || 0,
+      invoices: invoices.rows,
+      clients: clients.rows,
+      trips: trips.rows,
+      bilties: bilties.rows,
+      total: invoices.total,
     };
   }, []);
 
@@ -226,8 +244,11 @@ export default function Invoices() {
       ...invoice,
       client_name: names.get(String(invoice.client_id)) || "—",
     }));
-    return rows.filter((row) => includesQuery(row, query, ["invoice_number", "status", "client_name"]));
-  }, [data, names, query]);
+    return rows.filter((row) => (
+      (!status || String(row.status) === status)
+      && includesQuery(row, query, ["invoice_number", "status", "client_name"])
+    ));
+  }, [data, names, query, status]);
   const pager = usePaged(filtered);
   const focus = useSearchFocus(params, filtered, pager.setPage);
 
@@ -244,6 +265,15 @@ export default function Invoices() {
     }
   };
 
+  const openInvoice = async (row) => {
+    try {
+      const response = await api(`/api/invoices/${row.id}`);
+      setDetail(response.invoice || { ...row, items: [] });
+    } catch {
+      setDetail(row);
+    }
+  };
+
   return (
     <section>
       <PageHeader title="Invoices" subtitle="Draft invoices with freight, detention, hamali, tax, and balance.">
@@ -252,15 +282,16 @@ export default function Invoices() {
       <Banner>{error || actionError}</Banner>
       <article className="card table-card">
         <div className="card-head">
-          <h2>invoices {data ? <span className="count">{data.total}</span> : null}</h2>
+          <h2>Invoices {data ? <span className="count">{filtered.length}</span> : null}</h2>
           <SearchField value={query} onChange={(value) => { setQuery(value); pager.setPage(1); }} />
         </div>
+        <ChipFilter options={statusList(data?.invoices)} value={status} onChange={(value) => { setStatus(value); pager.setPage(1); }} />
         {loading ? <p className="muted pad">Loading invoices...</p> : (
           <DataTable
             rows={pager.rows}
             highlightId={focus}
-            empty={query ? "No invoices match this search." : "No invoices yet."}
-            emptyAction={query ? null : { label: "New Invoice", onClick: () => setModal("invoice") }}
+            empty={query || status ? "No invoices match this search." : "No invoices yet."}
+            emptyAction={query || status ? null : { label: "New Invoice", onClick: () => setModal("invoice") }}
             columns={[
               { key: "no", label: "Invoice no", render: (row) => row.invoice_number },
               { key: "client", label: "Client", render: (row) => row.client_name },
@@ -278,15 +309,60 @@ export default function Invoices() {
                   <StatusNext
                     value={row.status}
                     next={NEXT_STATUS.invoice[row.status] || []}
-                    onChange={(status) => changeStatus(row, status)}
+                    onChange={(next) => changeStatus(row, next)}
                   />
                 ),
               },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => openInvoice(row)} /> },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
+
+      {detail ? (
+        <Modal title={detail.invoice_number || "Invoice"} onClose={() => setDetail(null)} wide>
+          <DetailList rows={[
+            ["Client", names.get(String(detail.client_id)) || detail.client_name],
+            ["Date", formatDate(detail.invoice_date)],
+            ["Status", detail.status],
+            ["Subtotal", money(detail.subtotal)],
+            ["Tax", money(detail.tax_amount)],
+            ["Total", money(detail.total_amount)],
+            ["Balance", money(detail.balance_amount)],
+          ]} />
+          {(detail.items || []).length ? (
+            <table className="line-table">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Trip</th>
+                  <th>Bilty</th>
+                  <th>Freight</th>
+                  <th>Detention</th>
+                  <th>Hamali</th>
+                  <th>Other</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.items.map((item) => (
+                  <tr key={item.id || `${item.trip_id}-${item.description}`}>
+                    <td>{item.description || "—"}</td>
+                    <td>{item.trip_id ? tripLabel((data?.trips || []).find((trip) => String(trip.id) === String(item.trip_id))) : "—"}</td>
+                    <td>{(data?.bilties || []).find((bilty) => String(bilty.id) === String(item.bilty_id))?.bilty_number || item.bilty_id || "—"}</td>
+                    <td>{money(item.freight)}</td>
+                    <td>{money(item.detention)}</td>
+                    <td>{money(item.hamali)}</td>
+                    <td>{money(item.other_charges)}</td>
+                    <td>{money(item.item_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <p className="muted">No line items on this invoice.</p>}
+        </Modal>
+      ) : null}
 
       {modal === "invoice" && data ? (
         <Modal title="New Invoice" onClose={() => setModal("")} wide>

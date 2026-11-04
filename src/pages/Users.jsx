@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { api, DEMO_TOKEN, getToken } from "../api";
+import { api, DEMO_TOKEN, fetchAll, getToken } from "../api";
 import { useAuth } from "../auth";
 import {
   Banner,
   DataTable,
   Field,
   FormActions,
+  FormLegend,
   Modal,
   PageHeader,
   Pager,
@@ -26,37 +27,44 @@ import { useToast } from "../toast";
 
 const LOCAL_KEY = "tms_local_users";
 
-function readLocalUsers(current) {
+function readLocalRows() {
   try {
-    const rows = JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
-    return [current, ...rows.filter((row) => row.email !== current.email)];
+    return JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
   } catch {
-    return [current];
+    return [];
   }
+}
+
+function readLocalUsers(current) {
+  const rows = readLocalRows();
+  const overlay = rows.find((row) => row.email === current.email);
+  const head = overlay ? { ...current, ...overlay, id: current.id } : current;
+  return [head, ...rows.filter((row) => row.email !== current.email && String(row.id) !== String(current.id))];
 }
 
 function writeLocalUser(user) {
-  let rows = [];
-  try {
-    rows = JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]");
-  } catch {
-    rows = [];
-  }
+  const rows = readLocalRows().filter((row) => String(row.id) !== String(user.id) && row.email !== user.email);
   localStorage.setItem(LOCAL_KEY, JSON.stringify([user, ...rows]));
 }
 
-function UserForm({ actor, companies, onClose, onCreated }) {
+function UserForm({ actor, companies, initial, onClose, onSaved }) {
+  const editing = Boolean(initial);
   const superAdmin = actor?.user_type === "SUPER_ADMIN";
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    name: "",
-    mobile: "",
-    email: "",
+    name: initial?.name || "",
+    mobile: initial?.mobile || "",
+    email: initial?.email || "",
     password: "",
-    user_type: "COMPANY_ADMIN",
-    company_id: actor?.company_id ? String(actor.company_id) : "",
+    user_type: initial?.user_type || "COMPANY_ADMIN",
+    company_id: initial?.company_id
+      ? String(initial.company_id)
+      : actor?.company_id
+        ? String(actor.company_id)
+        : "",
+    status: initial?.status === 0 || initial?.status === "0" ? "0" : "1",
   });
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -69,12 +77,14 @@ function UserForm({ actor, companies, onClose, onCreated }) {
       ["name", form.name, "Enter a name"],
       ["mobile", form.mobile, "Enter a mobile number"],
       ["email", form.email, "Enter an email"],
-      ["password", form.password, "Enter a password"],
     ]);
+    if (!editing) {
+      if (!form.password) nextIssues.password = "Enter a password";
+    }
     if (!nextIssues.mobile && form.mobile.replace(/\D/g, "").length < 10) {
       nextIssues.mobile = "Enter at least 10 digits";
     }
-    if (!nextIssues.password && form.password.length < 6) {
+    if (form.password && form.password.length < 6) {
       nextIssues.password = "Use at least 6 characters";
     }
     if (form.user_type !== "SUPER_ADMIN" && !form.company_id && superAdmin) {
@@ -90,30 +100,38 @@ function UserForm({ actor, companies, onClose, onCreated }) {
       name: form.name.trim(),
       mobile: form.mobile.trim(),
       email: form.email.trim().toLowerCase(),
-      password: form.password,
       user_type: form.user_type,
       company_id: form.user_type === "SUPER_ADMIN" ? null : form.company_id || actor?.company_id,
+      status: Number(form.status),
     };
+    if (form.password) payload.password = form.password;
 
     try {
       if (getToken() === DEMO_TOKEN) {
-        writeLocalUser({
-          id: Date.now(),
+        const saved = {
+          id: initial?.id || Date.now(),
           company_id: payload.company_id,
           user_type: payload.user_type,
           name: payload.name,
           mobile: payload.mobile,
           email: payload.email,
-          status: 1,
-          last_login_at: null,
-          created_at: new Date().toISOString(),
-        });
-        onCreated();
+          status: payload.status,
+          last_login_at: initial?.last_login_at || null,
+          created_at: initial?.created_at || new Date().toISOString(),
+        };
+        writeLocalUser(saved);
+        onSaved(saved, editing);
+        return;
+      }
+
+      if (editing) {
+        const data = await api(`/api/users/${initial.id}`, { method: "PATCH", body: payload });
+        onSaved(data.user || { ...initial, ...payload }, true);
         return;
       }
 
       await api("/api/users", { method: "POST", body: payload });
-      onCreated();
+      onSaved(null, false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -123,27 +141,41 @@ function UserForm({ actor, companies, onClose, onCreated }) {
 
   return (
     <form onSubmit={submit} className="form-grid" noValidate>
-      <Field label="Name" error={issues.name}>
+      <FormLegend />
+      <Field label="Name" required error={issues.name}>
         <input value={form.name} onChange={set("name")} />
       </Field>
-      <Field label="Mobile" error={issues.mobile}>
+      <Field label="Mobile" required error={issues.mobile}>
         <input value={form.mobile} onChange={set("mobile")} />
       </Field>
-      <Field label="Email" error={issues.email}>
+      <Field label="Email" required error={issues.email} hint="Needed for desk login">
         <input type="email" value={form.email} onChange={set("email")} autoComplete="off" />
       </Field>
-      <Field label="Password" error={issues.password}>
+      <Field
+        label={editing ? "Password" : "Password"}
+        required={!editing}
+        error={issues.password}
+        hint={editing ? "Leave blank to keep current" : "Min 6 characters"}
+      >
         <input type="password" value={form.password} onChange={set("password")} autoComplete="new-password" />
       </Field>
-      <Field label="User type">
+      <Field label="User type" required>
         <Select value={form.user_type} onChange={set("user_type")}>
           <option value="COMPANY_ADMIN">Company Admin</option>
           <option value="COMPANY_USER">Company User</option>
+          <option value="DRIVER">Driver</option>
+          <option value="HELPER">Helper</option>
           {superAdmin ? <option value="SUPER_ADMIN">Super Admin</option> : null}
         </Select>
       </Field>
+      <Field label="Status">
+        <Select value={form.status} onChange={set("status")}>
+          <option value="1">Active</option>
+          <option value="0">Inactive</option>
+        </Select>
+      </Field>
       {superAdmin && form.user_type !== "SUPER_ADMIN" ? (
-        <Field label="Company" error={issues.company_id}>
+        <Field label="Company" required error={issues.company_id}>
           <Select value={form.company_id} onChange={set("company_id")}>
             <option value="">Select company</option>
             {companies.map((company) => (
@@ -153,37 +185,38 @@ function UserForm({ actor, companies, onClose, onCreated }) {
         </Field>
       ) : null}
       {error ? <p className="form-error span-2">{error}</p> : null}
-      <FormActions onCancel={onClose} busy={busy} submitLabel="Add user" />
+      <FormActions onCancel={onClose} busy={busy} submitLabel={editing ? "Save changes" : "Add user"} />
     </form>
   );
 }
 
 export default function Users() {
-  const { user } = useAuth();
+  const { user, applyUser } = useAuth();
   const toast = useToast();
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(undefined);
   const isAdmin = ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(user?.user_type);
   const demo = getToken() === DEMO_TOKEN;
   const { data, loading, error, reload } = useResource(async () => {
     if (demo) {
+      const rows = readLocalUsers(user);
       return {
-        rows: readLocalUsers(user),
+        rows,
         companies: [],
-        total: readLocalUsers(user).length,
+        total: rows.length,
       };
     }
 
     const [users, companies] = await Promise.all([
-      api("/api/users?limit=100"),
+      fetchAll("/api/users", "users"),
       api("/api/companies", { auth: false }),
     ]);
     return {
-      rows: users.users || [],
+      rows: users.rows,
       companies: companies.companies || [],
-      total: users.pagination?.total || 0,
+      total: users.total,
     };
-  }, [demo, user?.email]);
+  }, [demo, user?.email, user?.name, user?.mobile]);
 
   const filtered = useMemo(
     () => (data?.rows || []).filter((row) => includesQuery(row, query, ["name", "email", "mobile", "user_type"])),
@@ -194,6 +227,25 @@ export default function Users() {
     () => new Map((data?.companies || []).map((company) => [String(company.id), company.name])),
     [data]
   );
+
+  const closeForm = () => setEditing(undefined);
+
+  const saved = (row, wasEdit) => {
+    if (row && (String(row.id) === String(user?.id) || row.email === user?.email)) {
+      applyUser({
+        ...user,
+        name: row.name,
+        mobile: row.mobile,
+        email: row.email,
+        user_type: row.user_type,
+        company_id: row.company_id,
+        status: row.status,
+      });
+    }
+    setEditing(undefined);
+    toast(wasEdit ? "User updated" : "User added");
+    reload();
+  };
 
   if (!isAdmin) {
     return (
@@ -206,8 +258,8 @@ export default function Users() {
 
   return (
     <section>
-      <PageHeader title="Users" subtitle="Add company admins and desk users. Signup is closed.">
-        <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
+      <PageHeader title="Users" subtitle="Add and edit company admins and desk users. Signup is closed.">
+        <button className="btn btn-primary" type="button" onClick={() => setEditing(null)}>
           Add Admin
         </button>
       </PageHeader>
@@ -221,7 +273,7 @@ export default function Users() {
           <DataTable
             rows={pager.rows}
             empty={query ? "No users match this search." : "No users yet."}
-            emptyAction={query ? null : { label: "Add Admin", onClick: () => setOpen(true) }}
+            emptyAction={query ? null : { label: "Add Admin", onClick: () => setEditing(null) }}
             columns={[
               { key: "name", label: "Name", render: (row) => row.name },
               { key: "email", label: "Email", render: (row) => row.email || "—" },
@@ -230,22 +282,28 @@ export default function Users() {
               { key: "company", label: "Company", render: (row) => companyNames.get(String(row.company_id)) || row.company_id || "—" },
               { key: "login", label: "Last login", render: (row) => formatDate(row.last_login_at) },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
+              {
+                key: "actions",
+                label: "Actions",
+                render: (row) => (
+                  <button className="btn btn-ghost table-action" type="button" onClick={() => setEditing(row)}>
+                    Edit
+                  </button>
+                ),
+              },
             ]}
           />
         )}
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
-      {open ? (
-        <Modal title="Add Admin" onClose={() => setOpen(false)}>
+      {editing !== undefined ? (
+        <Modal title={editing ? "Edit user" : "Add Admin"} onClose={closeForm}>
           <UserForm
             actor={user}
             companies={data?.companies || []}
-            onClose={() => setOpen(false)}
-            onCreated={() => {
-              setOpen(false);
-              toast("User added");
-              reload();
-            }}
+            initial={editing}
+            onClose={closeForm}
+            onSaved={saved}
           />
         </Modal>
       ) : null}
