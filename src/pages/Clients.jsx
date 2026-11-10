@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fetchAll } from "../api";
+import { endpoints } from "../api/endpoints";
 import {
   Banner,
   DataTable,
+  DeleteButton,
   DetailList,
   Field,
   FormActions,
@@ -11,6 +13,7 @@ import {
   Modal,
   PageHeader,
   Pager,
+  RowActions,
   SearchField,
   Select,
   StatusPill,
@@ -119,6 +122,16 @@ export default function Clients() {
 
   useEffect(() => setQuery(params.get("q") || ""), [params]);
 
+  const removeClient = async (row) => {
+    try {
+      await api(endpoints.client(row.id), { method: "DELETE" });
+      toast("Client deactivated");
+      reload();
+    } catch (err) {
+      toast(err.message || "Could not delete client");
+    }
+  };
+
   return (
     <section>
       <PageHeader title="Clients" subtitle="Clients billed for trips and shipments.">
@@ -145,7 +158,20 @@ export default function Clients() {
               { key: "gst", label: "GST", render: (row) => row.gst_number || "—" },
               { key: "address", label: "Address", render: (row) => row.address || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
-              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail(row)} /> },
+              {
+                key: "actions",
+                label: "",
+                render: (row) => (
+                  <RowActions>
+                    <ViewButton onClick={() => setDetail(row)} />
+                    <DeleteButton
+                      disabled={Number(row.status) === 0}
+                      confirmMessage={`Deactivate ${row.name || "this client"}?`}
+                      onClick={() => removeClient(row)}
+                    />
+                  </RowActions>
+                ),
+              },
             ]}
           />
         )}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { Icon } from "../components/Icons";
+import { isSuperAdminRole } from "../lib";
 import { useTheme } from "../theme";
 
 export default function Login() {
@@ -12,6 +13,7 @@ export default function Login() {
   const notice = location.state?.notice || "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
@@ -28,8 +30,12 @@ export default function Login() {
     setError("");
 
     try {
-      await login(email.trim(), password);
-      navigate("/");
+      const nextUser = await login(email.trim(), password);
+      if (isSuperAdminRole(nextUser?.user_type)) {
+        navigate("/select-company", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -39,31 +45,49 @@ export default function Login() {
 
   return (
     <div className="login-screen">
-      <button
-        className="icon-btn login-theme"
-        type="button"
-        aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
-        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-      >
-        <Icon name={theme === "light" ? "moon" : "sun"} />
-      </button>
-      <section className="login-hero">
-        <div className="brand-lockup">
-          <span className="brand-mark">
-            <Icon name="truck" size={20} />
-          </span>
-          <strong className="brand-name">
-            TMS <span>Desk</span>
-          </strong>
-        </div>
-        <h2>One desk for every trip.</h2>
-        <p>Book a bilty, assign a truck, settle expenses, and invoice the client without leaving the panel.</p>
-      </section>
       <div className="login-card-wrap">
         <form className="login-card" onSubmit={submit} noValidate>
-          <h1>Sign in</h1>
-          <p className="page-sub">Transport operations for your company.</p>
-          <p className="form-hint">Demo login: admin@tms.com / 123456</p>
+          <div className="login-card-top">
+            <div className="brand-lockup">
+              <span className="brand-mark">
+                <Icon name="truck" size={16} />
+              </span>
+              <strong className="brand-name">
+                TMS <span>Desk</span>
+              </strong>
+            </div>
+            <div className="login-theme" role="group" aria-label="Theme">
+              <button
+                type="button"
+                className={theme === "light" ? "active" : ""}
+                aria-pressed={theme === "light"}
+                onClick={() => setTheme("light")}
+              >
+                <Icon name="sun" size={15} />
+                Light
+              </button>
+              <button
+                type="button"
+                className={theme === "dark" ? "active" : ""}
+                aria-pressed={theme === "dark"}
+                onClick={() => setTheme("dark")}
+              >
+                <Icon name="moon" size={15} />
+                Dark
+              </button>
+            </div>
+          </div>
+
+          <div className="login-card-head">
+            <h1>Sign in</h1>
+            <p className="page-sub">Transport operations for your company.</p>
+          </div>
+
+          <div className="login-demo">
+            <span>Demo</span>
+            <code>admin@tms.com</code>
+            <code>123456</code>
+          </div>
 
           <label className={`field${issues.email ? " invalid" : ""}`}>
             <span>Email</span>
@@ -79,18 +103,28 @@ export default function Login() {
             />
             {issues.email ? <small className="field-error">{issues.email}</small> : null}
           </label>
+
           <label className={`field${issues.password ? " invalid" : ""}`}>
             <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => {
-                setPassword(event.target.value);
-                setIssues((current) => ({ ...current, password: "" }));
-              }}
-              placeholder="Password"
-              autoComplete="current-password"
-            />
+            <div className="login-password">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setIssues((current) => ({ ...current, password: "" }));
+                }}
+                placeholder="Password"
+                autoComplete="current-password"
+              />
+              <button
+                className="login-password-toggle"
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
             {issues.password ? <small className="field-error">{issues.password}</small> : null}
           </label>
 

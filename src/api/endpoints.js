@@ -14,14 +14,21 @@ export const endpoints = {
   user: (id) => `/api/users/${id}`,
 
   clients: "/api/clients",
+  client: (id) => `/api/clients/${id}`,
   drivers: "/api/drivers",
+  driver: (id) => `/api/drivers/${id}`,
   helpers: "/api/helpers",
+  helper: (id) => `/api/helpers/${id}`,
 
   vehicles: "/api/vehicles",
+  vehicle: (id) => `/api/vehicles/${id}`,
   vehicleTypes: "/api/vehicle-types",
+  vehicleType: (id) => `/api/vehicle-types/${id}`,
   vehicleAssignments: "/api/vehicle-assignments",
+  vehicleAssignment: (id) => `/api/vehicle-assignments/${id}`,
 
   vehicleDocuments: "/api/vehicle-documents",
+  vehicleDocument: (id) => `/api/vehicle-documents/${id}`,
   driverDocuments: "/api/driver-documents",
   driverDocument: (driverId) => `/api/driver-documents/${driverId}`,
   helperDocuments: "/api/helper-documents",
@@ -60,4 +67,5 @@ export const endpoints = {
   modules: "/api/modules",
   userModuleAccess: "/api/user-module-access",
   userModuleAccessFor: (userId) => `/api/user-module-access/${userId}`,
+  userModuleAccessRow: (id) => `/api/user-module-access/${id}`,
 };

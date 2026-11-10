@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fetchAll } from "../api";
+import { endpoints } from "../api/endpoints";
 import {
   Banner,
   DataTable,
+  DeleteButton,
   DetailList,
   Field,
   FormActions,
@@ -11,6 +13,7 @@ import {
   Modal,
   PageHeader,
   Pager,
+  RowActions,
   SearchField,
   Select,
   StatusPill,
@@ -290,6 +293,32 @@ export default function Fleet() {
 
   useEffect(() => setQuery(params.get("q") || ""), [params]);
 
+  const removeRow = async (row) => {
+    const path =
+      tab === "types"
+        ? endpoints.vehicleType(row.id)
+        : tab === "assignments"
+          ? endpoints.vehicleAssignment(row.id)
+          : endpoints.vehicle(row.id);
+    const label =
+      tab === "types" ? "Vehicle type deactivated" : tab === "assignments" ? "Assignment closed" : "Vehicle deactivated";
+    const confirmName =
+      tab === "types"
+        ? row.name || "this type"
+        : tab === "assignments"
+          ? row.vehicle_name || "this assignment"
+          : row.registration_no || "this vehicle";
+
+    try {
+      await api(path, { method: "DELETE" });
+      toast(label);
+      if (detail?.row?.id === row.id) setDetail(null);
+      reload();
+    } catch (err) {
+      toast(err.message || `Could not delete ${confirmName}`);
+    }
+  };
+
   const actionLabel = tab === "types" ? "New Type" : tab === "assignments" ? "Assign Crew" : "New Vehicle";
 
   return (
@@ -326,6 +355,17 @@ export default function Fleet() {
             columns={[
               { key: "name", label: "Name", render: (row) => row.name },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
+              {
+                key: "actions",
+                label: "",
+                render: (row) => (
+                  <DeleteButton
+                    disabled={Number(row.status) === 0}
+                    confirmMessage={`Deactivate ${row.name || "this vehicle type"}?`}
+                    onClick={() => removeRow(row)}
+                  />
+                ),
+              },
             ]}
           />
         ) : tab === "assignments" ? (
@@ -341,7 +381,20 @@ export default function Fleet() {
               { key: "start", label: "Start", render: (row) => formatDate(row.start_date) },
               { key: "end", label: "End", render: (row) => formatDate(row.end_date) },
               { key: "active", label: "Active", render: (row) => <StatusPill value={row.is_active} active /> },
-              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail({ kind: "assignment", row })} /> },
+              {
+                key: "actions",
+                label: "",
+                render: (row) => (
+                  <RowActions>
+                    <ViewButton onClick={() => setDetail({ kind: "assignment", row })} />
+                    <DeleteButton
+                      disabled={Number(row.is_active) === 0}
+                      confirmMessage={`Close assignment for ${row.vehicle_name || "this vehicle"}?`}
+                      onClick={() => removeRow(row)}
+                    />
+                  </RowActions>
+                ),
+              },
             ]}
           />
         ) : (
@@ -355,7 +408,20 @@ export default function Fleet() {
               { key: "type", label: "Type", render: (row) => row.type_name },
               { key: "capacity", label: "Capacity", render: (row) => row.capacity || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
-              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail({ kind: "vehicle", row })} /> },
+              {
+                key: "actions",
+                label: "",
+                render: (row) => (
+                  <RowActions>
+                    <ViewButton onClick={() => setDetail({ kind: "vehicle", row })} />
+                    <DeleteButton
+                      disabled={Number(row.status) === 0}
+                      confirmMessage={`Deactivate ${row.registration_no || "this vehicle"}?`}
+                      onClick={() => removeRow(row)}
+                    />
+                  </RowActions>
+                ),
+              },
             ]}
           />
         )}

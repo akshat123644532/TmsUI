@@ -285,6 +285,31 @@ export function ViewButton({ onClick }) {
   );
 }
 
+export function DeleteButton({
+  onClick,
+  label = "Delete",
+  confirmMessage = "Delete this record? It will be deactivated and hidden from active lists.",
+  disabled = false,
+}) {
+  return (
+    <button
+      className="btn btn-ghost table-action table-action-danger"
+      type="button"
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        if (window.confirm(confirmMessage)) onClick();
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+export function RowActions({ children }) {
+  return <div className="row-actions">{children}</div>;
+}
+
 export function KpiCard({ icon, label, value, trend }) {
   return (
     <article className="card kpi">

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fetchAll } from "../api";
+import { endpoints } from "../api/endpoints";
 import {
   Banner,
   DataTable,
+  DeleteButton,
   DetailList,
   Field,
   FormActions,
@@ -11,6 +13,7 @@ import {
   Modal,
   PageHeader,
   Pager,
+  RowActions,
   SearchField,
   Select,
   StatusPill,
@@ -134,6 +137,17 @@ export default function Staff() {
 
   useEffect(() => setQuery(params.get("q") || ""), [params]);
 
+  const removePerson = async (row) => {
+    const path = tab === "drivers" ? endpoints.driver(row.id) : endpoints.helper(row.id);
+    try {
+      await api(path, { method: "DELETE" });
+      toast(tab === "drivers" ? "Driver deactivated" : "Helper deactivated");
+      reload();
+    } catch (err) {
+      toast(err.message || "Could not delete");
+    }
+  };
+
   return (
     <section>
       <PageHeader title="Drivers & Helpers" subtitle="People assigned to vehicles and trips.">
@@ -170,7 +184,20 @@ export default function Staff() {
               { key: "email", label: "Email", render: (row) => row.email || "—" },
               { key: "address", label: "Address", render: (row) => row.address || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
-              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => setDetail(row)} /> },
+              {
+                key: "actions",
+                label: "",
+                render: (row) => (
+                  <RowActions>
+                    <ViewButton onClick={() => setDetail(row)} />
+                    <DeleteButton
+                      disabled={Number(row.status) === 0}
+                      confirmMessage={`Deactivate ${row.name || (tab === "drivers" ? "this driver" : "this helper")}?`}
+                      onClick={() => removePerson(row)}
+                    />
+                  </RowActions>
+                ),
+              },
             ]}
           />
         )}

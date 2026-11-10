@@ -4,6 +4,7 @@ import { endpoints } from "../api/endpoints";
 import {
   Banner,
   DataTable,
+  DeleteButton,
   Field,
   FormActions,
   FormLegend,
@@ -171,6 +172,16 @@ export default function Access() {
   );
   const pager = usePaged(filtered);
 
+  const revokeAccess = async (row) => {
+    try {
+      await api(endpoints.userModuleAccessRow(row.id), { method: "DELETE" });
+      toast("Access revoked");
+      reload();
+    } catch (err) {
+      toast(err.message || "Could not revoke access");
+    }
+  };
+
   return (
     <section>
       <PageHeader title="Module Access" subtitle="user_module_access — view / create / update / delete / approve / export / dispatch / close.">
@@ -210,6 +221,17 @@ export default function Access() {
                 label: flag.replace("can_", ""),
                 render: (row) => (Number(row[flag]) === 1 ? "Yes" : "—"),
               })),
+              {
+                key: "actions",
+                label: "",
+                render: (row) => (
+                  <DeleteButton
+                    label="Revoke"
+                    confirmMessage={`Revoke ${row.module_name || "module"} access for ${row.user_name || "this user"}?`}
+                    onClick={() => revokeAccess(row)}
+                  />
+                ),
+              },
             ]}
           />
         )}

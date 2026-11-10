@@ -1,5 +1,16 @@
-import { createContext, useContext, useState } from "react";
-import { api, clearSession, DEMO_TOKEN, getRefreshToken, getToken, getUser, setSession } from "./api";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  api,
+  clearSession,
+  DEMO_TOKEN,
+  getActiveCompany,
+  getRefreshToken,
+  getToken,
+  getUser,
+  setActiveCompany,
+  setSession,
+} from "./api";
+import { isSuperAdminRole, normalizeRole } from "./lib";
 
 const AuthContext = createContext(null);
 
@@ -17,13 +28,55 @@ const DEMO_USER = {
   company_name: "TMS Demo Company",
 };
 
+const DEMO_COMPANIES = [
+  { id: 2, name: "TMS Demo Company" },
+];
+
 function isDemoLogin(email, password) {
   return email.trim().toLowerCase() === DEMO_EMAIL && password === DEMO_PASSWORD;
+}
+
+function companyFromUser(user) {
+  if (!user?.company_id) return null;
+  return {
+    id: user.company_id,
+    name: user.company_name || `Company #${user.company_id}`,
+  };
 }
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getUser());
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
+  const [company, setCompanyState] = useState(() => getActiveCompany());
+
+  const selectCompany = useCallback((next) => {
+    const saved = setActiveCompany(next);
+    setCompanyState(saved);
+    return saved;
+  }, []);
+
+  const bindCompanyForUser = useCallback((nextUser) => {
+    if (isSuperAdminRole(nextUser?.user_type)) {
+      const existing = getActiveCompany();
+      if (existing?.id) {
+        setCompanyState(existing);
+        return existing;
+      }
+      setActiveCompany(null);
+      setCompanyState(null);
+      return null;
+    }
+
+    const bound = companyFromUser(nextUser);
+    if (!bound) {
+      setActiveCompany(null);
+      setCompanyState(null);
+      return null;
+    }
+    const saved = setActiveCompany(bound);
+    setCompanyState(saved);
+    return saved;
+  }, []);
 
   const login = async (email, password) => {
     try {
@@ -34,10 +87,15 @@ export function AuthProvider({ children }) {
       });
 
       if (data?.token && data?.user) {
-        setSession(data);
-        setUser(data.user);
+        const nextUser = {
+          ...data.user,
+          user_type: normalizeRole(data.user.user_type) || data.user.user_type,
+        };
+        setSession({ ...data, user: nextUser });
+        setUser(nextUser);
         setAuthed(true);
-        return data.user;
+        bindCompanyForUser(nextUser);
+        return nextUser;
       }
     } catch (error) {
       if (!isDemoLogin(email, password)) throw error;
@@ -47,11 +105,12 @@ export function AuthProvider({ children }) {
       throw new Error("Invalid email or password");
     }
 
-    const user = { ...DEMO_USER };
-    setSession({ token: DEMO_TOKEN, refresh_token: DEMO_TOKEN, user });
-    setUser(user);
+    const nextUser = { ...DEMO_USER };
+    setSession({ token: DEMO_TOKEN, refresh_token: DEMO_TOKEN, user: nextUser });
+    setUser(nextUser);
     setAuthed(true);
-    return user;
+    bindCompanyForUser(nextUser);
+    return nextUser;
   };
 
   const logout = async () => {
@@ -68,6 +127,7 @@ export function AuthProvider({ children }) {
 
     clearSession();
     setUser(null);
+    setCompanyState(null);
     setAuthed(false);
   };
 
@@ -77,19 +137,67 @@ export function AuthProvider({ children }) {
     const data = await api("/api/profile");
     if (!data?.user) return getUser();
 
-    setSession({ user: data.user });
-    setUser(data.user);
-    return data.user;
+    const nextUser = {
+      ...data.user,
+      user_type: normalizeRole(data.user.user_type) || data.user.user_type,
+    };
+    setSession({ user: nextUser });
+    setUser(nextUser);
+
+    if (!isSuperAdminRole(nextUser.user_type)) {
+      bindCompanyForUser(nextUser);
+    }
+
+    return nextUser;
   };
 
   const applyUser = (next) => {
     if (!next) return;
-    setSession({ user: next });
-    setUser(next);
+    const nextUser = {
+      ...next,
+      user_type: normalizeRole(next.user_type) || next.user_type,
+    };
+    setSession({ user: nextUser });
+    setUser(nextUser);
   };
 
+  const loadCompanies = useCallback(async () => {
+    if (getToken() === DEMO_TOKEN) {
+      return DEMO_COMPANIES;
+    }
+
+    const data = await api("/api/companies");
+    return data.companies || [];
+  }, []);
+
+  const needsCompanySelection = useMemo(() => {
+    if (!authed || !user) return false;
+    if (isSuperAdminRole(user.user_type)) return !company?.id;
+    return false;
+  }, [authed, user, company]);
+
+  const missingCompany = useMemo(() => {
+    if (!authed || !user) return false;
+    if (isSuperAdminRole(user.user_type)) return false;
+    return !user.company_id && !company?.id;
+  }, [authed, user, company]);
+
   return (
-    <AuthContext.Provider value={{ user, authed, login, logout, refreshUser, applyUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        authed,
+        company,
+        needsCompanySelection,
+        missingCompany,
+        login,
+        logout,
+        refreshUser,
+        applyUser,
+        selectCompany,
+        loadCompanies,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

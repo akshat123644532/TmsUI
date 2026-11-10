@@ -6,6 +6,7 @@ const KEYS = {
   token: "tms_token",
   refresh: "tms_refresh",
   user: "tms_user",
+  company: "tms_company",
 };
 
 let refreshPromise = null;
@@ -32,10 +33,33 @@ export function setSession({ token, refresh_token, user } = {}) {
   if (user) localStorage.setItem(KEYS.user, JSON.stringify(user));
 }
 
+export function getActiveCompany() {
+  try {
+    return JSON.parse(localStorage.getItem(KEYS.company) || "null");
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveCompany(company) {
+  if (!company?.id) {
+    localStorage.removeItem(KEYS.company);
+    return null;
+  }
+
+  const next = {
+    id: company.id,
+    name: company.name || `Company #${company.id}`,
+  };
+  localStorage.setItem(KEYS.company, JSON.stringify(next));
+  return next;
+}
+
 export function clearSession() {
   localStorage.removeItem(KEYS.token);
   localStorage.removeItem(KEYS.refresh);
   localStorage.removeItem(KEYS.user);
+  localStorage.removeItem(KEYS.company);
 }
 
 async function refreshSession() {
@@ -70,6 +94,11 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
 
   if (auth && getToken()) {
     headers.Authorization = `Bearer ${getToken()}`;
+  }
+
+  const activeCompany = getActiveCompany();
+  if (auth && activeCompany?.id) {
+    headers["X-Company-Id"] = String(activeCompany.id);
   }
 
   let res;
@@ -122,8 +151,8 @@ export async function fetchAll(path, listKey, maxPages = 10) {
   for (let page = 1; page <= maxPages; page += 1) {
     const joiner = path.includes("?") ? "&" : "?";
     const data = await api(`${path}${joiner}page=${page}&limit=100`);
-    const chunk = data[listKey] || [];
-    total = Number(data.pagination?.total ?? rows.length + chunk.length);
+    const chunk = data[listKey] || data.data || data.rows || [];
+    total = Number(data.pagination?.total ?? data.total ?? rows.length + chunk.length);
     rows.push(...chunk);
 
     if (chunk.length === 0 || rows.length >= total) {

@@ -4,21 +4,26 @@ import { useAuth } from "../auth";
 import {
   Banner,
   DataTable,
+  DeleteButton,
   Field,
   FormActions,
   FormLegend,
   Modal,
   PageHeader,
   Pager,
+  RowActions,
   SearchField,
   Select,
   StatusPill,
 } from "../components/ui";
+import { endpoints } from "../api/endpoints";
 import {
   blankIssues,
   formatDate,
   hasIssues,
   includesQuery,
+  isAdminRole,
+  isSuperAdminRole,
   roleLabel,
   usePaged,
   useResource,
@@ -47,9 +52,10 @@ function writeLocalUser(user) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify([user, ...rows]));
 }
 
-function UserForm({ actor, companies, initial, onClose, onSaved }) {
+function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved }) {
   const editing = Boolean(initial);
-  const superAdmin = actor?.user_type === "SUPER_ADMIN";
+  const superAdmin = isSuperAdminRole(actor?.user_type);
+  const defaultCompanyId = initial?.company_id || activeCompanyId || actor?.company_id || "";
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
@@ -59,11 +65,7 @@ function UserForm({ actor, companies, initial, onClose, onSaved }) {
     email: initial?.email || "",
     password: "",
     user_type: initial?.user_type || "COMPANY_ADMIN",
-    company_id: initial?.company_id
-      ? String(initial.company_id)
-      : actor?.company_id
-        ? String(actor.company_id)
-        : "",
+    company_id: defaultCompanyId ? String(defaultCompanyId) : "",
     status: initial?.status === 0 || initial?.status === "0" ? "0" : "1",
   });
   const set = (key) => (event) => {
@@ -101,7 +103,10 @@ function UserForm({ actor, companies, initial, onClose, onSaved }) {
       mobile: form.mobile.trim(),
       email: form.email.trim().toLowerCase(),
       user_type: form.user_type,
-      company_id: form.user_type === "SUPER_ADMIN" ? null : form.company_id || actor?.company_id,
+      company_id:
+        form.user_type === "SUPER_ADMIN"
+          ? null
+          : form.company_id || activeCompanyId || actor?.company_id,
       status: Number(form.status),
     };
     if (form.password) payload.password = form.password;
@@ -191,11 +196,11 @@ function UserForm({ actor, companies, initial, onClose, onSaved }) {
 }
 
 export default function Users() {
-  const { user, applyUser } = useAuth();
+  const { user, applyUser, company } = useAuth();
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(undefined);
-  const isAdmin = ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(user?.user_type);
+  const isAdmin = isAdminRole(user?.user_type);
   const demo = getToken() === DEMO_TOKEN;
   const { data, loading, error, reload } = useResource(async () => {
     if (demo) {
@@ -207,16 +212,48 @@ export default function Users() {
       };
     }
 
-    const [users, companies] = await Promise.all([
-      fetchAll("/api/users", "users"),
-      api("/api/companies", { auth: false }),
-    ]);
+    let users = { rows: [], total: 0 };
+    let loadError = "";
+
+    try {
+      users = await fetchAll("/api/users", "users");
+    } catch (err) {
+      loadError = err.message || "Could not load users";
+    }
+
+    let companies = [];
+    try {
+      const companyData = await api("/api/companies");
+      companies = companyData.companies || [];
+    } catch {
+      companies = [];
+    }
+
+    const rows = [...(users.rows || [])];
+    if (user?.id != null && !rows.some((row) => String(row.id) === String(user.id) || row.email === user.email)) {
+      rows.unshift({
+        id: user.id,
+        company_id: user.company_id,
+        user_type: user.user_type || "COMPANY_ADMIN",
+        name: user.name,
+        mobile: user.mobile,
+        email: user.email,
+        status: user.status ?? 1,
+        last_login_at: user.last_login_at || null,
+      });
+    }
+
+    if (!rows.length && loadError) {
+      throw new Error(loadError);
+    }
+
     return {
-      rows: users.rows,
-      companies: companies.companies || [],
-      total: users.total,
+      rows,
+      companies,
+      total: Math.max(users.total || 0, rows.length),
+      warning: loadError,
     };
-  }, [demo, user?.email, user?.name, user?.mobile]);
+  }, [demo, user?.id, user?.email, user?.name, user?.mobile, user?.user_type, user?.company_id]);
 
   const filtered = useMemo(
     () => (data?.rows || []).filter((row) => includesQuery(row, query, ["name", "email", "mobile", "user_type"])),
@@ -247,6 +284,26 @@ export default function Users() {
     reload();
   };
 
+  const removeUser = async (row) => {
+    if (String(row.id) === String(user?.id) || row.email === user?.email) {
+      toast("You cannot delete your own account");
+      return;
+    }
+
+    try {
+      if (demo) {
+        const rows = readLocalRows().filter((item) => String(item.id) !== String(row.id) && item.email !== row.email);
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(rows));
+      } else {
+        await api(endpoints.user(row.id), { method: "DELETE" });
+      }
+      toast("User deactivated");
+      reload();
+    } catch (err) {
+      toast(err.message || "Could not delete user");
+    }
+  };
+
   if (!isAdmin) {
     return (
       <section>
@@ -263,7 +320,7 @@ export default function Users() {
           Add Admin
         </button>
       </PageHeader>
-      <Banner>{error}</Banner>
+      <Banner>{error || data?.warning}</Banner>
       <article className="card table-card">
         <div className="card-head">
           <h2>users {data ? <span className="count">{data.total}</span> : null}</h2>
@@ -285,11 +342,21 @@ export default function Users() {
               {
                 key: "actions",
                 label: "Actions",
-                render: (row) => (
-                  <button className="btn btn-ghost table-action" type="button" onClick={() => setEditing(row)}>
-                    Edit
-                  </button>
-                ),
+                render: (row) => {
+                  const self = String(row.id) === String(user?.id) || row.email === user?.email;
+                  return (
+                    <RowActions>
+                      <button className="btn btn-ghost table-action" type="button" onClick={() => setEditing(row)}>
+                        Edit
+                      </button>
+                      <DeleteButton
+                        disabled={self || Number(row.status) === 0}
+                        confirmMessage={`Deactivate ${row.name || "this user"}? They will no longer be able to sign in.`}
+                        onClick={() => removeUser(row)}
+                      />
+                    </RowActions>
+                  );
+                },
               },
             ]}
           />
@@ -301,6 +368,7 @@ export default function Users() {
           <UserForm
             actor={user}
             companies={data?.companies || []}
+            activeCompanyId={company?.id}
             initial={editing}
             onClose={closeForm}
             onSaved={saved}

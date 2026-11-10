@@ -36,9 +36,25 @@ export function useResource(loader, deps) {
   return { ...state, reload };
 }
 
+export function normalizeRole(type) {
+  return String(type || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+}
+
+export function isAdminRole(type) {
+  return ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(normalizeRole(type));
+}
+
+export function isSuperAdminRole(type) {
+  return normalizeRole(type) === "SUPER_ADMIN";
+}
+
 export function roleLabel(type) {
-  if (type === "SUPER_ADMIN") return "System Administrator";
-  if (type === "COMPANY_ADMIN") return "Company Administrator";
+  const normalized = normalizeRole(type);
+  if (normalized === "SUPER_ADMIN") return "System Administrator";
+  if (normalized === "COMPANY_ADMIN") return "Company Administrator";
   return String(type || "User")
     .replaceAll("_", " ")
     .toLowerCase()

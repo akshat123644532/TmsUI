@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api, DEMO_TOKEN, fetchAll, getToken, pingApi } from "../api";
 import { useAuth } from "../auth";
-import { initials, roleLabel } from "../lib";
+import { initials, isAdminRole, isSuperAdminRole, roleLabel } from "../lib";
 import { useTheme } from "../theme";
 import { Icon } from "./Icons";
 import { Modal } from "./ui";
@@ -44,13 +44,8 @@ const NAV_GROUPS = [
   },
 ];
 
-const COMPANY_NAMES = {
-  1: "sheel",
-  2: "TMS Demo Company",
-};
-
 export default function Shell() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser, company, selectCompany, loadCompanies } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
@@ -63,30 +58,37 @@ export default function Shell() {
   const [alerts, setAlerts] = useState([]);
   const [alertNote, setAlertNote] = useState("");
   const [help, setHelp] = useState("");
-  const [companyName, setCompanyName] = useState(
-    () => user?.company_name || COMPANY_NAMES[user?.company_id] || "Your company"
-  );
+  const [companyName, setCompanyName] = useState(() => company?.name || user?.company_name || "Your company");
   const demo = getToken() === DEMO_TOKEN;
+  const superAdmin = isSuperAdminRole(user?.user_type);
 
   useEffect(() => {
     refreshUser().catch(() => {});
   }, []);
 
   useEffect(() => {
-    setCompanyName(user?.company_name || COMPANY_NAMES[user?.company_id] || "Your company");
+    setCompanyName(company?.name || user?.company_name || "Your company");
     let live = true;
+    const activeId = company?.id || user?.company_id;
+    if (!activeId || demo) return undefined;
 
-    api("/api/companies", { auth: false })
-      .then((data) => {
-        const match = (data.companies || []).find((company) => String(company.id) === String(user?.company_id));
-        if (live && match?.name) setCompanyName(match.name);
+    loadCompanies()
+      .then((rows) => {
+        const match = rows.find((row) => String(row.id) === String(activeId));
+        if (!live || !match?.name) return;
+        setCompanyName(match.name);
+        if (String(company?.id) === String(match.id) && company?.name !== match.name) {
+          selectCompany({ id: match.id, name: match.name });
+        } else if (!company?.name && match.name) {
+          selectCompany({ id: match.id, name: match.name });
+        }
       })
       .catch(() => {});
 
     return () => {
       live = false;
     };
-  }, [user]);
+  }, [user?.company_id, user?.company_name, company?.id, company?.name, demo, loadCompanies, selectCompany]);
 
   useEffect(() => {
     let live = true;
@@ -280,7 +282,7 @@ export default function Shell() {
 
         <nav className="nav">
           {NAV_GROUPS.map((group) => {
-            const items = group.items.filter((item) => !item.admin || ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(user?.user_type));
+            const items = group.items.filter((item) => !item.admin || isAdminRole(user?.user_type));
             if (!items.length) return null;
             return (
               <div className="nav-group" key={group.label}>
@@ -354,6 +356,18 @@ export default function Shell() {
           <div className="company-chip">
             <small>Company</small>
             <strong>{companyName}</strong>
+            {superAdmin ? (
+              <button
+                className="company-switch"
+                type="button"
+                onClick={() => {
+                  selectCompany(null);
+                  navigate("/select-company");
+                }}
+              >
+                Switch
+              </button>
+            ) : null}
           </div>
 
           <div className={`online-pill${online ? "" : " off"}`}>

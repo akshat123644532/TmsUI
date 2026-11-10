@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { api, fetchAll } from "../api";
+import { endpoints } from "../api/endpoints";
 import {
   Banner,
   DataTable,
+  DeleteButton,
   Field,
   FormActions,
   FormLegend,
@@ -137,6 +139,7 @@ export default function Documents() {
   const [tab, setTab] = useState("vehicle");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
     const [vehicles, drivers, helpers, vehicleDocs] = await Promise.all([
       fetchAll("/api/vehicles", "vehicles"),
@@ -173,6 +176,25 @@ export default function Documents() {
   );
   const pager = usePaged(filtered);
 
+  const removeDocument = async (row) => {
+    setActionError("");
+    const path =
+      tab === "vehicle"
+        ? endpoints.vehicleDocument(row.id)
+        : tab === "driver"
+          ? endpoints.driverDocument(row.id)
+          : endpoints.helperDocument(row.id);
+
+    try {
+      await api(path, { method: "DELETE" });
+      toast("Document deactivated");
+      reload();
+    } catch (err) {
+      setActionError(err.message || "Could not delete document");
+      toast(err.message || "Could not delete document");
+    }
+  };
+
   return (
     <section>
       <PageHeader title="Documents" subtitle="vehicle_documents, driver_documents, and helper_documents.">
@@ -180,7 +202,7 @@ export default function Documents() {
           Add Document
         </button>
       </PageHeader>
-      <Banner>{error}</Banner>
+      <Banner>{error || actionError}</Banner>
       <Tabs
         value={tab}
         onChange={(next) => {
@@ -211,6 +233,17 @@ export default function Documents() {
               { key: "expiry", label: "Expiry", render: (row) => formatDate(row.expiry_date) },
               { key: "url", label: "File", render: (row) => row.document_url ? <a className="text-link" href={row.document_url} target="_blank" rel="noreferrer">Open</a> : "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
+              {
+                key: "actions",
+                label: "",
+                render: (row) => (
+                  <DeleteButton
+                    disabled={Number(row.status) === 0}
+                    confirmMessage={`Deactivate ${row.document_type || "this document"} for ${row.owner || "this owner"}?`}
+                    onClick={() => removeDocument(row)}
+                  />
+                ),
+              },
             ]}
           />
         )}
