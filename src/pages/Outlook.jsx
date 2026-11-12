@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchAll } from "../api";
 import { Banner, EmptyState, PageHeader, StatusPill } from "../components/ui";
-import { formatDate, useResource } from "../lib";
+import { formatDate, TRIP_STATUSES, useResource } from "../lib";
 
-const COLUMNS = ["CREATED", "DISPATCHED", "IN_TRANSIT", "DELIVERED", "COMPLETED", "CANCELLED"];
+const COLUMNS = TRIP_STATUSES;
+// Legacy statuses map onto the BRD columns.
+const LEGACY = { CREATED: "DRAFT", COMPLETED: "CLOSED" };
 
 export default function Outlook({ embedded = false }) {
   const navigate = useNavigate();
@@ -25,7 +27,8 @@ export default function Outlook({ embedded = false }) {
     const buckets = Object.fromEntries(COLUMNS.map((status) => [status, []]));
 
     for (const trip of data?.trips || []) {
-      const key = buckets[trip.status] ? trip.status : "CREATED";
+      const status = LEGACY[trip.status] || trip.status;
+      const key = buckets[status] ? status : "DRAFT";
       buckets[key].push(trip);
     }
 

@@ -16,7 +16,7 @@ import {
   StatusPill,
   Tabs,
 } from "../components/ui";
-import { blankIssues, formatDate, hasIssues, includesQuery, usePaged, useResource } from "../lib";
+import { blankIssues, DOCUMENT_TYPES, formatDate, hasIssues, includesQuery, usePaged, useResource } from "../lib";
 import { useToast } from "../toast";
 
 async function loadOwnedDocs(people, path, label) {
@@ -108,7 +108,12 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
         </Select>
       </Field>
       <Field label="Document type" required error={issues.document_type}>
-        <input value={form.document_type} onChange={set("document_type")} placeholder="RC, INSURANCE, LICENSE" />
+        <Select value={form.document_type} onChange={set("document_type")}>
+          <option value="">Select type</option>
+          {DOCUMENT_TYPES.map((type) => (
+            <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
+          ))}
+        </Select>
       </Field>
       <Field label="Document number">
         <input value={form.document_number} onChange={set("document_number")} />

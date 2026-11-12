@@ -30,6 +30,9 @@ function VehicleForm({ types, onClose, onCreated }) {
   const [form, setForm] = useState({
     vehicle_type_id: types[0] ? String(types[0].id) : "",
     registration_no: "",
+    make: "",
+    model: "",
+    ownership: "OWNED",
     capacity: "",
     status: "1",
   });
@@ -39,6 +42,8 @@ function VehicleForm({ types, onClose, onCreated }) {
     const nextIssues = blankIssues([
       ["vehicle_type_id", form.vehicle_type_id, "Select a vehicle type"],
       ["registration_no", form.registration_no, "Enter the registration number"],
+      ["make", form.make, "Enter the make"],
+      ["model", form.model, "Enter the model"],
     ]);
     setIssues(nextIssues);
     if (hasIssues(nextIssues)) return;
@@ -52,6 +57,9 @@ function VehicleForm({ types, onClose, onCreated }) {
         body: {
           vehicle_type_id: form.vehicle_type_id,
           registration_no: form.registration_no.trim(),
+          make: form.make.trim(),
+          model: form.model.trim(),
+          ownership: form.ownership,
           capacity: form.capacity === "" ? null : Number(form.capacity),
           status: Number(form.status),
         },
@@ -78,6 +86,18 @@ function VehicleForm({ types, onClose, onCreated }) {
       <Field label="Registration no" required error={issues.registration_no}>
         <input value={form.registration_no} onChange={(event) => { setForm({ ...form, registration_no: event.target.value }); setIssues((current) => ({ ...current, registration_no: "" })); }} placeholder="MH01AB1234" />
       </Field>
+      <Field label="Make" required error={issues.make}>
+        <input value={form.make} onChange={(event) => { setForm({ ...form, make: event.target.value }); setIssues((current) => ({ ...current, make: "" })); }} placeholder="Tata" />
+      </Field>
+      <Field label="Model" required error={issues.model}>
+        <input value={form.model} onChange={(event) => { setForm({ ...form, model: event.target.value }); setIssues((current) => ({ ...current, model: "" })); }} placeholder="Prima 4028" />
+      </Field>
+      <Field label="Ownership" required>
+        <Select value={form.ownership} onChange={(event) => setForm({ ...form, ownership: event.target.value })}>
+          <option value="OWNED">Owned</option>
+          <option value="HIRED">Hired</option>
+        </Select>
+      </Field>
       <Field label="Capacity">
         <input type="number" min="0" step="0.01" value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} placeholder="16.00" />
       </Field>
@@ -85,6 +105,7 @@ function VehicleForm({ types, onClose, onCreated }) {
         <Select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
           <option value="1">Active</option>
           <option value="0">Inactive</option>
+          <option value="2">Maintenance</option>
         </Select>
       </Field>
       {types.length === 0 ? <p className="form-error span-2">Add a vehicle type before registering a vehicle.</p> : null}
@@ -286,7 +307,7 @@ export default function Fleet() {
 
     return (data?.vehicles || [])
       .map((row) => ({ ...row, type_name: typeName.get(String(row.vehicle_type_id)) || "—" }))
-      .filter((row) => includesQuery(row, query, ["registration_no", "type_name", "capacity"]));
+      .filter((row) => includesQuery(row, query, ["registration_no", "type_name", "capacity", "make", "model", "ownership"]));
   }, [data, tab, query, typeName, vehicleName, driverName, helperName]);
   const pager = usePaged(rows);
   const focus = useSearchFocus(params, rows, pager.setPage);
@@ -406,7 +427,12 @@ export default function Fleet() {
             columns={[
               { key: "reg", label: "Registration", render: (row) => row.registration_no },
               { key: "type", label: "Type", render: (row) => row.type_name },
+              { key: "make", label: "Make / Model", render: (row) => [row.make, row.model].filter(Boolean).join(" ") || "—" },
+              { key: "ownership", label: "Ownership", render: (row) => row.ownership ? String(row.ownership).replaceAll("_", " ") : "—" },
               { key: "capacity", label: "Capacity", render: (row) => row.capacity || "—" },
+              ...(data?.vehicles?.some((row) => row.availability_status)
+                ? [{ key: "availability", label: "Availability", render: (row) => (row.availability_status ? <StatusPill value={row.availability_status} /> : "—") }]
+                : []),
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
               {
                 key: "actions",
@@ -433,8 +459,12 @@ export default function Fleet() {
           {detail.kind === "vehicle" ? (
             <DetailList rows={[
               ["Type", detail.row.type_name],
+              ["Make", detail.row.make],
+              ["Model", detail.row.model],
+              ["Ownership", detail.row.ownership],
               ["Capacity", detail.row.capacity],
-              ["Status", Number(detail.row.status) === 1 ? "Active" : "Inactive"],
+              ["Availability", detail.row.availability_status ? String(detail.row.availability_status).replaceAll("_", " ") : null],
+              ["Status", Number(detail.row.status) === 1 ? "Active" : Number(detail.row.status) === 2 ? "Maintenance" : "Inactive"],
             ]} />
           ) : (
             <DetailList rows={[

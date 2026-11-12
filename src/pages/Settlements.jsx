@@ -77,7 +77,7 @@ function SettlementForm({ trips, onClose, onCreated }) {
         <input value={form.remarks} onChange={(event) => setForm({ ...form, remarks: event.target.value })} />
       </Field>
       <p className="form-hint span-2">
-        Only trip_id is required. total_advance / total_expenses / final_amount / balance_amount default 0 and are filled from approved advances &amp; expenses. status defaults to PENDING.
+        Balance = Advance + Carry-Forward − Approved Expenses. Only trip_id is required; total advance, total expenses and balance are calculated from approved advances &amp; expenses. Status defaults to PENDING.
       </p>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Create settlement" />
@@ -126,7 +126,7 @@ export default function Settlements() {
 
   return (
     <section>
-      <PageHeader title="Trip Settlement" subtitle="Advance versus expenses for each trip, then settle or carry forward.">
+      <PageHeader title="Trip Settlement" subtitle="Advance + Carry-Forward − Approved Expenses = Balance. Settle or carry the balance forward.">
         <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
           New Settlement
         </button>
@@ -144,10 +144,10 @@ export default function Settlements() {
             emptyAction={query ? null : { label: "New Settlement", onClick: () => setOpen(true) }}
             columns={[
               { key: "trip", label: "Trip", render: (row) => row.trip_name },
-              { key: "advance", label: "Total advance", align: "right", render: (row) => money(row.total_advance) },
-              { key: "expenses", label: "Total expenses", align: "right", render: (row) => money(row.total_expenses) },
-              { key: "final", label: "Final amount", align: "right", render: (row) => money(row.final_amount) },
-              { key: "balance", label: "Balance", align: "right", render: (row) => money(row.balance_amount) },
+              { key: "advance", label: "Advance", align: "right", render: (row) => money(row.total_advance) },
+              { key: "carry", label: "Carry-forward", align: "right", render: (row) => money(row.carry_forward_amount) },
+              { key: "expenses", label: "Approved expenses", align: "right", render: (row) => money(row.total_expenses) },
+              { key: "balance", label: "Closing balance", align: "right", render: (row) => money(row.balance_amount) },
               { key: "settled", label: "Settled at", render: (row) => formatDate(row.settled_at) },
               { key: "remarks", label: "Remarks", render: (row) => row.remarks || "—" },
               {

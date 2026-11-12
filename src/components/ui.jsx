@@ -103,9 +103,13 @@ export function StatusPill({ value, active = false }) {
   const label = active
     ? Number(value) === 1
       ? "Active"
-      : "Inactive"
+      : Number(value) === 2
+        ? "Maintenance"
+        : "Inactive"
     : String(value || "—").replaceAll("_", " ");
-  const tone = active ? (Number(value) === 1 ? "good" : "mute") : statusTone(value);
+  const tone = active
+    ? (Number(value) === 1 ? "good" : Number(value) === 2 ? "warn" : "mute")
+    : statusTone(value);
 
   return <span className={`pill ${tone}`}>{label}</span>;
 }

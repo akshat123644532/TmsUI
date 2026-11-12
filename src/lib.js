@@ -55,6 +55,7 @@ export function roleLabel(type) {
   const normalized = normalizeRole(type);
   if (normalized === "SUPER_ADMIN") return "System Administrator";
   if (normalized === "COMPANY_ADMIN") return "Company Administrator";
+  if (normalized === "COMPANY_USER") return "Company User";
   return String(type || "User")
     .replaceAll("_", " ")
     .toLowerCase()
@@ -99,7 +100,7 @@ export function compactMoney(value) {
 export function statusTone(status) {
   const value = String(status ?? "").toUpperCase();
 
-  if (["DELIVERED", "COMPLETED", "PAID", "VERIFIED", "APPROVED", "CONFIRMED", "SETTLED", "ACTIVE", "1"].includes(value)) {
+  if (["DELIVERED", "COMPLETED", "PAID", "VERIFIED", "APPROVED", "CONFIRMED", "SETTLED", "ACTIVE", "CLOSED", "USED", "1"].includes(value)) {
     return "good";
   }
 
@@ -107,7 +108,7 @@ export function statusTone(status) {
     return "bad";
   }
 
-  if (["IN_TRANSIT", "DISPATCHED", "SENT", "PARTIAL", "PENDING", "RESERVED", "SUBMITTED", "CARRY_FORWARD"].includes(value)) {
+  if (["IN_TRANSIT", "DISPATCHED", "SENT", "PARTIAL", "PENDING", "RESERVED", "SUBMITTED", "CARRY_FORWARD", "BILTY_LINKED", "READY_FOR_DISPATCH", "FINAL_REPORT_SUBMITTED", "2"].includes(value)) {
     return "warn";
   }
 
@@ -252,8 +253,8 @@ export const DEDUCTION_TYPES = ["TDS", "OTHER"];
 /** Create-form required fields from phpMyAdmin `tms` dump (NOT NULL, no useful default). */
 export const TABLE_REQUIRED = {
   clients: ["name"],
-  drivers: ["name", "mobile"],
-  helpers: ["name", "mobile"],
+  drivers: ["name", "mobile", "password"],
+  helpers: ["name", "mobile", "password"],
   vehicles: ["vehicle_type_id", "registration_no"],
   vehicle_types: ["name"],
   vehicle_assignments: ["vehicle_id", "start_date"],
@@ -270,7 +271,45 @@ export const TABLE_REQUIRED = {
   users: ["name", "mobile", "password", "user_type"],
 };
 
+export const BILTY_STATUSES = ["RESERVED", "DRAFT", "CONFIRMED", "USED", "CANCELLED"];
+export const TRIP_STATUSES = [
+  "DRAFT",
+  "BILTY_LINKED",
+  "READY_FOR_DISPATCH",
+  "DISPATCHED",
+  "IN_TRANSIT",
+  "DELIVERED",
+  "FINAL_REPORT_SUBMITTED",
+  "VERIFIED",
+  "CLOSED",
+  "CANCELLED",
+];
+export const DOCUMENT_TYPES = ["RC", "INSURANCE", "FITNESS", "PERMIT", "PUC", "ROAD_TAX", "LICENSE", "AADHAAR", "PAN"];
+
 export const NEXT_STATUS = {
+  bilty: {
+    RESERVED: ["DRAFT", "CREATED", "CANCELLED"],
+    DRAFT: ["CONFIRMED", "USED", "CANCELLED"],
+    CREATED: ["CONFIRMED", "USED", "DRAFT", "CANCELLED", "COMPLETED"],
+    CONFIRMED: ["USED", "CANCELLED"],
+    USED: [],
+    COMPLETED: [],
+    CANCELLED: [],
+  },
+  trip: {
+    DRAFT: ["BILTY_LINKED", "READY_FOR_DISPATCH", "DISPATCHED", "CANCELLED"],
+    CREATED: ["BILTY_LINKED", "READY_FOR_DISPATCH", "DISPATCHED", "CANCELLED"],
+    BILTY_LINKED: ["READY_FOR_DISPATCH", "DISPATCHED", "CANCELLED"],
+    READY_FOR_DISPATCH: ["DISPATCHED", "CANCELLED"],
+    DISPATCHED: ["IN_TRANSIT", "CANCELLED"],
+    IN_TRANSIT: ["DELIVERED", "CANCELLED"],
+    DELIVERED: ["FINAL_REPORT_SUBMITTED", "COMPLETED", "CANCELLED"],
+    FINAL_REPORT_SUBMITTED: ["VERIFIED", "CANCELLED"],
+    VERIFIED: ["CLOSED", "COMPLETED"],
+    CLOSED: [],
+    COMPLETED: [],
+    CANCELLED: [],
+  },
   invoice: {
     DRAFT: ["SENT", "CANCELLED"],
     SENT: ["PARTIAL", "PAID", "CANCELLED"],

@@ -20,6 +20,26 @@ import {
 import { blankIssues, formatDate, hasIssues, includesQuery, money, NEXT_STATUS, num, statusList, today, tripLabel, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
 
+const DEFAULT_HSN_SAC = "996791";
+const TAX_TYPES = [
+  { type: "CGST", key: "cgst_rate" },
+  { type: "SGST", key: "sgst_rate" },
+  { type: "IGST", key: "igst_rate" },
+];
+
+function blankItem(description = "") {
+  return {
+    description,
+    hsn_sac: DEFAULT_HSN_SAC,
+    trip_id: "",
+    bilty_id: "",
+    freight: "",
+    detention: "",
+    hamali: "",
+    other_charges: "",
+  };
+}
+
 function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
@@ -28,18 +48,29 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
     client_id: "",
     invoice_number: "",
     invoice_date: today(),
-    tax_amount: "",
+    due_date: "",
+    cgst_rate: "",
+    sgst_rate: "",
+    igst_rate: "",
     deduction_amount: "",
   });
-  const [items, setItems] = useState([
-    { description: "Freight", trip_id: "", bilty_id: "", freight: "", detention: "", hamali: "", other_charges: "" },
-  ]);
+  const [items, setItems] = useState([blankItem("Freight")]);
 
   const subtotal = items.reduce(
     (sum, item) => sum + num(item.freight) + num(item.detention) + num(item.hamali) + num(item.other_charges),
     0
   );
-  const total = subtotal + num(header.tax_amount);
+  // Tax breakdown: each component is a % of the taxable subtotal; tax_amount is their sum.
+  const taxes = TAX_TYPES
+    .map(({ type, key }) => ({
+      tax_type: type,
+      tax_rate: num(header[key]),
+      taxable_amount: subtotal,
+      tax_amount: Math.round(subtotal * num(header[key])) / 100,
+    }))
+    .filter((tax) => tax.tax_rate > 0);
+  const taxAmount = taxes.reduce((sum, tax) => sum + tax.tax_amount, 0);
+  const total = subtotal + taxAmount;
 
   const submit = async (event) => {
     event.preventDefault();
@@ -48,6 +79,9 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
       ["invoice_number", header.invoice_number, "Enter an invoice number"],
       ["invoice_date", header.invoice_date, "Choose an invoice date"],
     ]);
+    if (header.due_date && header.invoice_date && header.due_date < header.invoice_date) {
+      nextIssues.due_date = "Due date cannot be before the invoice date";
+    }
     setIssues(nextIssues);
     if (hasIssues(nextIssues)) return;
 
@@ -61,7 +95,9 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
           client_id: header.client_id,
           invoice_number: header.invoice_number.trim(),
           invoice_date: header.invoice_date,
-          tax_amount: num(header.tax_amount),
+          due_date: header.due_date || null,
+          tax_amount: taxAmount,
+          taxes,
           deduction_amount: num(header.deduction_amount),
           items: items.map((item) => {
             const freight = num(item.freight);
@@ -70,6 +106,7 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
             const other_charges = num(item.other_charges);
             return {
               description: item.description || null,
+              hsn_sac: item.hsn_sac.trim() || DEFAULT_HSN_SAC,
               trip_id: item.trip_id || null,
               bilty_id: item.bilty_id || null,
               freight,
@@ -133,14 +170,30 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
             }}
           />
         </Field>
-        <Field label="Tax amount" hint="invoices.tax_amount · default 0">
+        <Field label="Due date" error={issues.due_date}>
           <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={header.tax_amount}
-            onChange={(event) => setHeader({ ...header, tax_amount: event.target.value })}
+            type="date"
+            value={header.due_date}
+            onChange={(event) => {
+              setHeader({ ...header, due_date: event.target.value });
+              setIssues((current) => ({ ...current, due_date: "" }));
+            }}
           />
+        </Field>
+        {TAX_TYPES.map(({ type, key }) => (
+          <Field key={key} label={`${type} rate (%)`} hint={`${type} amount ${money(subtotal * num(header[key]) / 100)}`}>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={header[key]}
+              onChange={(event) => setHeader({ ...header, [key]: event.target.value })}
+              placeholder="0"
+            />
+          </Field>
+        ))}
+        <Field label="Tax amount" hint="CGST + SGST + IGST · auto">
+          <input readOnly value={money(taxAmount)} />
         </Field>
         <Field label="Deduction amount" hint="invoices.deduction_amount · default 0">
           <input
@@ -159,6 +212,9 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
           <div className="form-grid">
             <Field label="Description">
               <input value={item.description} onChange={(event) => updateItem(index, "description", event.target.value)} />
+            </Field>
+            <Field label="HSN / SAC" hint="Default 996791 (goods transport)">
+              <input value={item.hsn_sac} onChange={(event) => updateItem(index, "hsn_sac", event.target.value)} />
             </Field>
             <Field label="Freight">
               <input type="number" min="0" step="0.01" value={item.freight} onChange={(event) => updateItem(index, "freight", event.target.value)} />
@@ -198,12 +254,12 @@ function InvoiceForm({ clients, trips, bilties, onClose, onCreated }) {
       <button
         className="btn btn-ghost"
         type="button"
-        onClick={() => setItems((current) => [...current, { description: "", trip_id: "", bilty_id: "", freight: "", detention: "", hamali: "", other_charges: "" }])}
+        onClick={() => setItems((current) => [...current, blankItem()])}
       >
         Add line
       </button>
       <p className="total-line">
-        Taxable {money(subtotal)} · tax {money(header.tax_amount)} · total {money(total)} · deduction {money(header.deduction_amount)} · balance {money(Math.max(0, total - num(header.deduction_amount)))}
+        Taxable {money(subtotal)} · tax {money(taxAmount)} · total {money(total)} · deduction {money(header.deduction_amount)} · balance {money(Math.max(0, total - num(header.deduction_amount)))}
       </p>
       {error ? <p className="form-error">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Create invoice" />
@@ -296,6 +352,7 @@ export default function Invoices() {
               { key: "no", label: "Invoice no", render: (row) => row.invoice_number },
               { key: "client", label: "Client", render: (row) => row.client_name },
               { key: "date", label: "Date", render: (row) => formatDate(row.invoice_date) },
+              { key: "due", label: "Due", render: (row) => formatDate(row.due_date) },
               { key: "taxable", label: "Taxable", align: "right", render: (row) => money(row.taxable_amount) },
               { key: "subtotal", label: "Subtotal", align: "right", render: (row) => money(row.subtotal) },
               { key: "tax", label: "Tax", align: "right", render: (row) => money(row.tax_amount) },
@@ -325,9 +382,11 @@ export default function Invoices() {
           <DetailList rows={[
             ["Client", names.get(String(detail.client_id)) || detail.client_name],
             ["Date", formatDate(detail.invoice_date)],
+            ["Due date", detail.due_date ? formatDate(detail.due_date) : null],
             ["Status", detail.status],
             ["Subtotal", money(detail.subtotal)],
             ["Tax", money(detail.tax_amount)],
+            ...(detail.taxes || []).map((tax) => [`${tax.tax_type} @ ${tax.tax_rate}%`, money(tax.tax_amount)]),
             ["Total", money(detail.total_amount)],
             ["Balance", money(detail.balance_amount)],
           ]} />

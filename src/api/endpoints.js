@@ -35,6 +35,9 @@ export const endpoints = {
   helperDocument: (helperId) => `/api/helper-documents/${helperId}`,
 
   bilties: "/api/bilties",
+  bilty: (id) => `/api/bilties/${id}`,
+  biltyReserve: "/api/bilties/reserve",
+  biltyReserveRange: "/api/bilties/reserve-range",
   trips: "/api/trips",
 
   tripExpenses: "/api/trip-expenses",
@@ -63,6 +66,8 @@ export const endpoints = {
 
   invoicePaymentDeductions: "/api/invoice-payment-deductions",
   invoicePaymentDeduction: (id) => `/api/invoice-payment-deductions/${id}`,
+
+  auditLogs: "/api/audit-logs",
 
   modules: "/api/modules",
   userModuleAccess: "/api/user-module-access",

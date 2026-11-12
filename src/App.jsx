@@ -19,6 +19,7 @@ import Settlements from "./pages/Settlements";
 import Payments from "./pages/Payments";
 import Reports from "./pages/Reports";
 import Access from "./pages/Access";
+import Audit from "./pages/Audit";
 import { Banner, PageHeader } from "./components/ui";
 
 function Guest({ children }) {
@@ -61,6 +62,7 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="/access" element={<Access />} />
+                <Route path="/audit" element={<Audit />} />
                 <Route path="/fleet" element={<Fleet />} />
                 <Route path="/staff" element={<Staff />} />
                 <Route path="/loads" element={<Loads />} />

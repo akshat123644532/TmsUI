@@ -32,6 +32,9 @@ function ClientForm({ onClose, onCreated }) {
     email: "",
     address: "",
     gst_number: "",
+    state_code: "",
+    billing_email: "",
+    payment_terms: "",
     status: "1",
   });
   const set = (key) => (event) => {
@@ -59,6 +62,9 @@ function ClientForm({ onClose, onCreated }) {
           email: form.email.trim() || null,
           address: form.address.trim() || null,
           gst_number: form.gst_number.trim() || null,
+          state_code: form.state_code.trim() || null,
+          billing_email: form.billing_email.trim() || null,
+          payment_terms: form.payment_terms.trim() || null,
           status: Number(form.status),
         },
       });
@@ -84,6 +90,15 @@ function ClientForm({ onClose, onCreated }) {
       </Field>
       <Field label="GST number">
         <input value={form.gst_number} onChange={set("gst_number")} />
+      </Field>
+      <Field label="State code" hint="GST state code, e.g. 27 (Maharashtra) — drives CGST/SGST vs IGST">
+        <input value={form.state_code} onChange={set("state_code")} placeholder="27" maxLength={10} />
+      </Field>
+      <Field label="Billing email">
+        <input type="email" value={form.billing_email} onChange={set("billing_email")} placeholder="accounts@client.com" />
+      </Field>
+      <Field label="Payment terms" hint="e.g. Net 30">
+        <input value={form.payment_terms} onChange={set("payment_terms")} placeholder="Net 30" />
       </Field>
       <Field label="Address">
         <input value={form.address} onChange={set("address")} />
@@ -114,7 +129,7 @@ export default function Clients() {
     };
   }, []);
   const filtered = useMemo(
-    () => (data?.rows || []).filter((row) => includesQuery(row, query, ["name", "mobile", "email", "gst_number", "address"])),
+    () => (data?.rows || []).filter((row) => includesQuery(row, query, ["name", "mobile", "email", "gst_number", "address", "state_code", "billing_email", "payment_terms"])),
     [data, query]
   );
   const pager = usePaged(filtered);
@@ -156,6 +171,9 @@ export default function Clients() {
               { key: "mobile", label: "Mobile", render: (row) => row.mobile || "—" },
               { key: "email", label: "Email", render: (row) => row.email || "—" },
               { key: "gst", label: "GST", render: (row) => row.gst_number || "—" },
+              { key: "state", label: "State", render: (row) => row.state_code || row.state || "—" },
+              { key: "billing_email", label: "Billing email", render: (row) => row.billing_email || "—" },
+              { key: "terms", label: "Payment terms", render: (row) => row.payment_terms || "—" },
               { key: "address", label: "Address", render: (row) => row.address || "—" },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
               {
@@ -183,6 +201,9 @@ export default function Clients() {
             ["Mobile", detail.mobile],
             ["Email", detail.email],
             ["GST", detail.gst_number],
+            ["State code", detail.state_code || detail.state],
+            ["Billing email", detail.billing_email],
+            ["Payment terms", detail.payment_terms],
             ["Address", detail.address],
             ["Status", Number(detail.status) === 1 ? "Active" : "Inactive"],
           ]} />

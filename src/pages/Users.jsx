@@ -16,6 +16,7 @@ import {
   Select,
   StatusPill,
 } from "../components/ui";
+import { ModuleAccessEditor } from "../components/ModuleAccess";
 import { endpoints } from "../api/endpoints";
 import {
   blankIssues,
@@ -23,7 +24,6 @@ import {
   hasIssues,
   includesQuery,
   isAdminRole,
-  isSuperAdminRole,
   roleLabel,
   usePaged,
   useResource,
@@ -52,10 +52,8 @@ function writeLocalUser(user) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify([user, ...rows]));
 }
 
-function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved }) {
+function UserForm({ actor, activeCompanyId, initial, onClose, onSaved }) {
   const editing = Boolean(initial);
-  const superAdmin = isSuperAdminRole(actor?.user_type);
-  const defaultCompanyId = initial?.company_id || activeCompanyId || actor?.company_id || "";
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
@@ -64,8 +62,6 @@ function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved
     mobile: initial?.mobile || "",
     email: initial?.email || "",
     password: "",
-    user_type: initial?.user_type || "COMPANY_ADMIN",
-    company_id: defaultCompanyId ? String(defaultCompanyId) : "",
     status: initial?.status === 0 || initial?.status === "0" ? "0" : "1",
   });
   const set = (key) => (event) => {
@@ -80,17 +76,12 @@ function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved
       ["mobile", form.mobile, "Enter a mobile number"],
       ["email", form.email, "Enter an email"],
     ]);
-    if (!editing) {
-      if (!form.password) nextIssues.password = "Enter a password";
-    }
+    if (!editing && !form.password) nextIssues.password = "Enter a password";
     if (!nextIssues.mobile && form.mobile.replace(/\D/g, "").length < 10) {
       nextIssues.mobile = "Enter at least 10 digits";
     }
-    if (form.password && form.password.length < 6) {
-      nextIssues.password = "Use at least 6 characters";
-    }
-    if (form.user_type !== "SUPER_ADMIN" && !form.company_id && superAdmin) {
-      nextIssues.company_id = "Select a company";
+    if (form.password && (form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/[0-9]/.test(form.password))) {
+      nextIssues.password = "Use 8+ characters with a letter and a number";
     }
     setIssues(nextIssues);
     if (hasIssues(nextIssues)) return;
@@ -98,16 +89,12 @@ function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved
     setBusy(true);
     setError("");
 
+    // Backend creates COMPANY_USER only, in the creator's company.
+    // PATCH accepts name / mobile / email / password; status has its own endpoint.
     const payload = {
       name: form.name.trim(),
       mobile: form.mobile.trim(),
       email: form.email.trim().toLowerCase(),
-      user_type: form.user_type,
-      company_id:
-        form.user_type === "SUPER_ADMIN"
-          ? null
-          : form.company_id || activeCompanyId || actor?.company_id,
-      status: Number(form.status),
     };
     if (form.password) payload.password = form.password;
 
@@ -115,12 +102,12 @@ function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved
       if (getToken() === DEMO_TOKEN) {
         const saved = {
           id: initial?.id || Date.now(),
-          company_id: payload.company_id,
-          user_type: payload.user_type,
+          company_id: initial?.company_id || activeCompanyId || actor?.company_id,
+          user_type: "COMPANY_USER",
           name: payload.name,
           mobile: payload.mobile,
           email: payload.email,
-          status: payload.status,
+          status: Number(form.status),
           last_login_at: initial?.last_login_at || null,
           created_at: initial?.created_at || new Date().toISOString(),
         };
@@ -130,13 +117,24 @@ function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved
       }
 
       if (editing) {
-        const data = await api(`/api/users/${initial.id}`, { method: "PATCH", body: payload });
-        onSaved(data.user || { ...initial, ...payload }, true);
+        const data = await api(endpoints.user(initial.id), { method: "PATCH", body: payload });
+        let status = initial.status;
+        if (Number(form.status) !== Number(initial.status ?? 1)) {
+          await api(`${endpoints.user(initial.id)}/status`, {
+            method: "PATCH",
+            body: { status: Number(form.status) },
+          });
+          status = Number(form.status);
+        }
+        onSaved({ ...initial, ...payload, ...(data.user || {}), status }, true);
         return;
       }
 
-      await api("/api/users", { method: "POST", body: payload });
-      onSaved(null, false);
+      const data = await api(endpoints.users, {
+        method: "POST",
+        body: { ...payload, user_type: "COMPANY_USER" },
+      });
+      onSaved(data.user || { id: data.id, ...payload, user_type: "COMPANY_USER" }, false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -157,35 +155,21 @@ function UserForm({ actor, companies, activeCompanyId, initial, onClose, onSaved
         <input type="email" value={form.email} onChange={set("email")} autoComplete="off" />
       </Field>
       <Field
-        label={editing ? "Password" : "Password"}
+        label="Password"
         required={!editing}
         error={issues.password}
-        hint={editing ? "Leave blank to keep current" : "Min 6 characters"}
+        hint={editing ? "Leave blank to keep current" : "Min 8 characters, letter + number"}
       >
         <input type="password" value={form.password} onChange={set("password")} autoComplete="new-password" />
       </Field>
-      <Field label="User type" required>
-        <Select value={form.user_type} onChange={set("user_type")}>
-          <option value="COMPANY_ADMIN">Company Admin</option>
-          <option value="COMPANY_USER">Company User</option>
-          <option value="DRIVER">Driver</option>
-          <option value="HELPER">Helper</option>
-          {superAdmin ? <option value="SUPER_ADMIN">Super Admin</option> : null}
-        </Select>
+      <Field label="User type" hint="Desk users are always created as Company User">
+        <input value="Company User" disabled readOnly />
       </Field>
-      <Field label="Status">
-        <Select value={form.status} onChange={set("status")}>
-          <option value="1">Active</option>
-          <option value="0">Inactive</option>
-        </Select>
-      </Field>
-      {superAdmin && form.user_type !== "SUPER_ADMIN" ? (
-        <Field label="Company" required error={issues.company_id}>
-          <Select value={form.company_id} onChange={set("company_id")}>
-            <option value="">Select company</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>{company.name}</option>
-            ))}
+      {editing ? (
+        <Field label="Status">
+          <Select value={form.status} onChange={set("status")}>
+            <option value="1">Active</option>
+            <option value="0">Inactive</option>
           </Select>
         </Field>
       ) : null}
@@ -200,6 +184,7 @@ export default function Users() {
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(undefined);
+  const [accessUser, setAccessUser] = useState(null);
   const isAdmin = isAdminRole(user?.user_type);
   const demo = getToken() === DEMO_TOKEN;
   const { data, loading, error, reload } = useResource(async () => {
@@ -216,14 +201,14 @@ export default function Users() {
     let loadError = "";
 
     try {
-      users = await fetchAll("/api/users", "users");
+      users = await fetchAll(endpoints.users, "users");
     } catch (err) {
       loadError = err.message || "Could not load users";
     }
 
     let companies = [];
     try {
-      const companyData = await api("/api/companies");
+      const companyData = await api(endpoints.companies);
       companies = companyData.companies || [];
     } catch {
       companies = [];
@@ -261,7 +246,7 @@ export default function Users() {
   );
   const pager = usePaged(filtered);
   const companyNames = useMemo(
-    () => new Map((data?.companies || []).map((company) => [String(company.id), company.name])),
+    () => new Map((data?.companies || []).map((row) => [String(row.id), row.name])),
     [data]
   );
 
@@ -274,14 +259,20 @@ export default function Users() {
         name: row.name,
         mobile: row.mobile,
         email: row.email,
-        user_type: row.user_type,
-        company_id: row.company_id,
-        status: row.status,
+        user_type: row.user_type || user.user_type,
+        company_id: row.company_id ?? user.company_id,
+        status: row.status ?? user.status,
       });
     }
     setEditing(undefined);
     toast(wasEdit ? "User updated" : "User added");
     reload();
+
+    // Module access is a direct checklist (no roles). Offer it right after save.
+    // Company admins always have full access, so skip them and the offline demo.
+    if (!demo && row?.id && String(row.user_type || "COMPANY_USER") === "COMPANY_USER") {
+      setAccessUser(row);
+    }
   };
 
   const removeUser = async (row) => {
@@ -315,9 +306,9 @@ export default function Users() {
 
   return (
     <section>
-      <PageHeader title="Users" subtitle="Add and edit company admins and desk users. Signup is closed.">
+      <PageHeader title="Users" subtitle="Add company users and set what each can do with a direct module/action checklist — no roles.">
         <button className="btn btn-primary" type="button" onClick={() => setEditing(null)}>
-          Add Admin
+          Add User
         </button>
       </PageHeader>
       <Banner>{error || data?.warning}</Banner>
@@ -330,7 +321,7 @@ export default function Users() {
           <DataTable
             rows={pager.rows}
             empty={query ? "No users match this search." : "No users yet."}
-            emptyAction={query ? null : { label: "Add Admin", onClick: () => setEditing(null) }}
+            emptyAction={query ? null : { label: "Add User", onClick: () => setEditing(null) }}
             columns={[
               { key: "name", label: "Name", render: (row) => row.name },
               { key: "email", label: "Email", render: (row) => row.email || "—" },
@@ -349,6 +340,11 @@ export default function Users() {
                       <button className="btn btn-ghost table-action" type="button" onClick={() => setEditing(row)}>
                         Edit
                       </button>
+                      {!demo && !self && String(row.user_type) === "COMPANY_USER" ? (
+                        <button className="btn btn-ghost table-action" type="button" onClick={() => setAccessUser(row)}>
+                          Access
+                        </button>
+                      ) : null}
                       <DeleteButton
                         disabled={self || Number(row.status) === 0}
                         confirmMessage={`Deactivate ${row.name || "this user"}? They will no longer be able to sign in.`}
@@ -364,14 +360,24 @@ export default function Users() {
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
       {editing !== undefined ? (
-        <Modal title={editing ? "Edit user" : "Add Admin"} onClose={closeForm}>
+        <Modal title={editing ? "Edit user" : "Add User"} onClose={closeForm}>
           <UserForm
             actor={user}
-            companies={data?.companies || []}
             activeCompanyId={company?.id}
             initial={editing}
             onClose={closeForm}
             onSaved={saved}
+          />
+        </Modal>
+      ) : null}
+      {accessUser ? (
+        <Modal title={`Module access — ${accessUser.name || "User"}`} onClose={() => setAccessUser(null)} wide>
+          <ModuleAccessEditor
+            userId={accessUser.id}
+            toast={toast}
+            submitLabel="Save access"
+            onCancel={() => setAccessUser(null)}
+            onSaved={() => setAccessUser(null)}
           />
         </Modal>
       ) : null}

@@ -31,6 +31,7 @@ function PersonForm({ kind, onClose, onCreated }) {
     name: "",
     mobile: "",
     email: "",
+    password: "",
     address: "",
     license_number: "",
     status: "1",
@@ -45,7 +46,11 @@ function PersonForm({ kind, onClose, onCreated }) {
     const nextIssues = blankIssues([
       ["name", form.name, "Enter a name"],
       ["mobile", form.mobile, "Enter a mobile number"],
+      ["password", form.password, "Enter a password for mobile login"],
     ]);
+    if (!nextIssues.password && (form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/[0-9]/.test(form.password))) {
+      nextIssues.password = "Use 8+ characters with a letter and a number";
+    }
     const digits = form.mobile.replace(/\D/g, "");
     if (!nextIssues.mobile && digits.length < 10) nextIssues.mobile = "Enter at least 10 digits";
     setIssues(nextIssues);
@@ -57,6 +62,7 @@ function PersonForm({ kind, onClose, onCreated }) {
     const body = {
       name: form.name.trim(),
       mobile: form.mobile.trim(),
+      password: form.password,
       email: form.email.trim() || null,
       address: form.address.trim() || null,
       status: Number(form.status),
@@ -83,6 +89,9 @@ function PersonForm({ kind, onClose, onCreated }) {
       </Field>
       <Field label="Mobile" required error={issues.mobile}>
         <input value={form.mobile} onChange={set("mobile")} placeholder="9876543210" />
+      </Field>
+      <Field label="Password" required error={issues.password} hint="Used for mobile login. Min 8 characters, letter + number">
+        <input type="password" value={form.password} onChange={set("password")} autoComplete="new-password" />
       </Field>
       <Field label="Email">
         <input type="email" value={form.email} onChange={set("email")} />

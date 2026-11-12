@@ -14,6 +14,7 @@ const NAV_GROUPS = [
       { to: "/", label: "Dashboard", icon: "grid" },
       { to: "/users", label: "Users", icon: "gear", admin: true },
       { to: "/access", label: "Module Access", icon: "gear", admin: true },
+      { to: "/audit", label: "Audit Logs", icon: "file", admin: true },
     ],
   },
   {

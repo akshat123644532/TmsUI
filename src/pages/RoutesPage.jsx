@@ -18,11 +18,12 @@ import {
   Tabs,
   ViewButton,
 } from "../components/ui";
-import { blankIssues, formatDate, hasIssues, includesQuery, statusList, usePaged, useResource, useSearchFocus } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, statusList, TRIP_STATUSES, usePaged, useResource, useSearchFocus } from "../lib";
 import Outlook from "./Outlook";
 import { useToast } from "../toast";
 
-const STATUSES = ["CREATED", "DISPATCHED", "IN_TRANSIT", "DELIVERED", "COMPLETED", "CANCELLED"];
+// BRD trip lifecycle. Legacy CREATED / COMPLETED are still displayed on existing rows.
+const STATUSES = TRIP_STATUSES;
 
 function TripForm({ options, onClose, onCreated }) {
   const [error, setError] = useState("");
@@ -38,7 +39,7 @@ function TripForm({ options, onClose, onCreated }) {
     destination: "",
     start_date: "",
     end_date: "",
-    status: "CREATED",
+    status: "DRAFT",
   });
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -126,7 +127,7 @@ function TripForm({ options, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Status" hint="Default CREATED">
+      <Field label="Status" hint="Default DRAFT">
         <Select value={form.status} onChange={set("status")}>
           {STATUSES.map((status) => (
             <option key={status} value={status}>{status.replaceAll("_", " ")}</option>
