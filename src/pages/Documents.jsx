@@ -151,12 +151,31 @@ export default function Documents() {
   const [open, setOpen] = useState(false);
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
-    const [vehicles, drivers, helpers, vehicleDocs] = await Promise.all([
+    const settled = await Promise.allSettled([
       fetchAll("/api/vehicles", "vehicles"),
       fetchAll("/api/drivers", "drivers"),
       fetchAll("/api/helpers", "helpers"),
       fetchAll("/api/vehicle-documents", "documents"),
     ]);
+
+    const value = (result, fallback) => (result.status === "fulfilled" ? result.value : fallback);
+    const vehicles = value(settled[0], { rows: [], total: 0 });
+    const drivers = value(settled[1], { rows: [], total: 0 });
+    const helpers = value(settled[2], { rows: [], total: 0 });
+    const vehicleDocs = value(settled[3], { rows: [], total: 0 });
+    const loadErrors = settled
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason?.message || "Request failed");
+
+    if (
+      settled[0].status === "rejected"
+      && settled[1].status === "rejected"
+      && settled[2].status === "rejected"
+      && settled[3].status === "rejected"
+    ) {
+      throw new Error(loadErrors[0] || "Could not load documents");
+    }
+
     const vehicleRows = vehicles.rows;
     const regs = new Map(vehicleRows.map((row) => [String(row.id), row.registration_no]));
     const [driverDocs, helperDocs] = await Promise.all([
@@ -177,6 +196,7 @@ export default function Documents() {
         driver: drivers.rows,
         helper: helpers.rows,
       },
+      warning: loadErrors[0] || "",
     };
   }, []);
 
@@ -220,7 +240,7 @@ export default function Documents() {
           Upload Document
         </button>
       </PageHeader>
-      <Banner>{error || actionError}</Banner>
+      <Banner>{error || actionError || data?.warning}</Banner>
       <Tabs
         value={tab}
         onChange={(next) => {
