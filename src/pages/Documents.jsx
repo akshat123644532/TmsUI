@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { api, fetchAll } from "../api";
+import { api, fetchAll, openApiFile } from "../api";
 import { endpoints } from "../api/endpoints";
 import {
   Banner,
@@ -19,6 +19,9 @@ import {
 import { blankIssues, DOCUMENT_TYPES, formatDate, hasIssues, includesQuery, usePaged, useResource } from "../lib";
 import { useToast } from "../toast";
 
+const VEHICLE_TYPES = ["RC", "INSURANCE", "FITNESS", "PERMIT", "PUC", "ROAD_TAX"];
+const PEOPLE_TYPES = ["LICENSE", "AADHAAR", "PAN", "OTHER"];
+
 async function loadOwnedDocs(people, path, label) {
   const groups = await Promise.all(
     people.slice(0, 40).map(async (person) => {
@@ -26,7 +29,7 @@ async function loadOwnedDocs(people, path, label) {
         const data = await api(`${path}/${person.id}?limit=50`);
         return (data.documents || []).map((doc) => ({
           ...doc,
-          owner: person.name,
+          owner: person.name || person.registration_no,
           ownerKind: label,
           _key: `${label}-${doc.id}`,
         }));
@@ -42,14 +45,14 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
+  const typeOptions = kind === "vehicle" ? VEHICLE_TYPES : PEOPLE_TYPES;
   const [form, setForm] = useState({
     owner_id: owners[0]?.id ? String(owners[0].id) : "",
-    document_type: "",
+    document_type: typeOptions[0] || "",
     document_number: "",
-    document_url: "",
     issue_date: "",
     expiry_date: "",
-    status: "1",
+    file: null,
   });
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -60,32 +63,33 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
     event.preventDefault();
     const nextIssues = blankIssues([
       ["owner_id", form.owner_id, "Select who this document belongs to"],
-      ["document_type", form.document_type, "Enter the document type"],
+      ["document_type", form.document_type, "Select the document type"],
+      ["document_number", form.document_number, "Enter document number"],
+      ["issue_date", form.issue_date, "Choose issue date"],
+      ["expiry_date", form.expiry_date, "Choose expiry date"],
     ]);
+    if (!form.file) nextIssues.file = "Choose a PDF / JPG / PNG file";
     setIssues(nextIssues);
     if (hasIssues(nextIssues)) return;
 
     setBusy(true);
     setError("");
 
-    const body = {
-      document_type: form.document_type.trim(),
-      document_number: form.document_number.trim() || null,
-      document_url: form.document_url.trim() || null,
-      issue_date: form.issue_date || null,
-      expiry_date: form.expiry_date || null,
-      status: Number(form.status),
-      vehicle_id: kind === "vehicle" ? form.owner_id : undefined,
-    };
-
     const path = kind === "vehicle"
-      ? "/api/vehicle-documents"
+      ? endpoints.vehicleDocumentsFor(form.owner_id)
       : kind === "driver"
-        ? `/api/driver-documents/${form.owner_id}`
-        : `/api/helper-documents/${form.owner_id}`;
+        ? endpoints.driverDocument(form.owner_id)
+        : endpoints.helperDocument(form.owner_id);
 
     try {
-      await api(path, { method: "POST", body });
+      const fd = new FormData();
+      fd.append("document_type", form.document_type);
+      fd.append("document_number", form.document_number.trim());
+      fd.append("issue_date", form.issue_date);
+      fd.append("expiry_date", form.expiry_date);
+      fd.append("file", form.file);
+      if (kind === "vehicle") fd.append("vehicle_id", form.owner_id);
+      await api(path, { method: "POST", formData: fd });
       onCreated();
     } catch (err) {
       setError(err.message);
@@ -109,32 +113,33 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
       </Field>
       <Field label="Document type" required error={issues.document_type}>
         <Select value={form.document_type} onChange={set("document_type")}>
-          <option value="">Select type</option>
-          {DOCUMENT_TYPES.map((type) => (
+          {typeOptions.map((type) => (
             <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Document number">
+      <Field label="Document number" required error={issues.document_number}>
         <input value={form.document_number} onChange={set("document_number")} />
       </Field>
-      <Field label="Document URL">
-        <input value={form.document_url} onChange={set("document_url")} placeholder="https://" />
-      </Field>
-      <Field label="Issue date">
+      <Field label="Issue date" required error={issues.issue_date}>
         <input type="date" value={form.issue_date} onChange={set("issue_date")} />
       </Field>
-      <Field label="Expiry date">
+      <Field label="Expiry date" required error={issues.expiry_date}>
         <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
       </Field>
-      <Field label="Status">
-        <Select value={form.status} onChange={set("status")}>
-          <option value="1">Active</option>
-          <option value="0">Inactive</option>
-        </Select>
+      <Field label="File (PDF / JPG / PNG)" required error={issues.file}>
+        <input
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+          onChange={(event) => {
+            setForm((current) => ({ ...current, file: event.target.files?.[0] || null }));
+            setIssues((current) => ({ ...current, file: "" }));
+          }}
+        />
       </Field>
+      {form.file ? <p className="muted span-2">Selected: {form.file.name}</p> : null}
       {error ? <p className="form-error span-2">{error}</p> : null}
-      <FormActions onCancel={onClose} busy={busy} submitLabel="Save document" />
+      <FormActions onCancel={onClose} busy={busy} submitLabel="Upload document" />
     </form>
   );
 }
@@ -200,11 +205,19 @@ export default function Documents() {
     }
   };
 
+  const openFile = async (url) => {
+    try {
+      await openApiFile(url);
+    } catch (err) {
+      toast(err.message || "Could not open file");
+    }
+  };
+
   return (
     <section>
-      <PageHeader title="Documents" subtitle="vehicle_documents, driver_documents, and helper_documents.">
+      <PageHeader title="Documents" subtitle="Upload RC, insurance, license and other compliance files (PDF / JPG / PNG).">
         <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
-          Add Document
+          Upload Document
         </button>
       </PageHeader>
       <Banner>{error || actionError}</Banner>
@@ -229,14 +242,20 @@ export default function Documents() {
           <DataTable
             rows={pager.rows}
             empty={query ? "No documents match this search." : "No documents in this folder."}
-            emptyAction={query ? null : { label: "Add Document", onClick: () => setOpen(true) }}
+            emptyAction={query ? null : { label: "Upload Document", onClick: () => setOpen(true) }}
             columns={[
               { key: "owner", label: "Owner", render: (row) => row.owner },
               { key: "type", label: "Type", render: (row) => row.document_type },
               { key: "number", label: "Number", render: (row) => row.document_number || "—" },
               { key: "issue", label: "Issue", render: (row) => formatDate(row.issue_date) },
               { key: "expiry", label: "Expiry", render: (row) => formatDate(row.expiry_date) },
-              { key: "url", label: "File", render: (row) => row.document_url ? <a className="text-link" href={row.document_url} target="_blank" rel="noreferrer">Open</a> : "—" },
+              {
+                key: "url",
+                label: "File",
+                render: (row) => (row.document_url
+                  ? <button className="btn btn-ghost table-action" type="button" onClick={() => openFile(row.document_url)}>Open</button>
+                  : "—"),
+              },
               { key: "status", label: "Status", render: (row) => <StatusPill value={row.status} active /> },
               {
                 key: "actions",
@@ -255,14 +274,14 @@ export default function Documents() {
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
       {open && data ? (
-        <Modal title="Add Document" onClose={() => setOpen(false)} wide>
+        <Modal title="Upload Document" onClose={() => setOpen(false)} wide>
           <DocumentForm
             kind={tab}
             owners={data.owners[tab]}
             onClose={() => setOpen(false)}
             onCreated={() => {
               setOpen(false);
-              toast("Document saved");
+              toast("Document uploaded");
               reload();
             }}
           />

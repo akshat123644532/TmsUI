@@ -85,10 +85,10 @@ async function refreshSession() {
   return data.token;
 }
 
-export async function api(path, { method = "GET", body, auth = true, retry = true } = {}) {
+export async function api(path, { method = "GET", body, auth = true, retry = true, formData } = {}) {
   const headers = {};
 
-  if (body !== undefined) {
+  if (body !== undefined && !formData) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -107,7 +107,11 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
     res = await fetch(`${BASE}${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: formData
+        ? formData
+        : body !== undefined
+          ? JSON.stringify(body)
+          : undefined,
     });
   } catch {
     const target = BASE || "https://tms-t8ln.onrender.com";
@@ -125,7 +129,7 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
       }
 
       await refreshPromise;
-      return api(path, { method, body, auth, retry: false });
+      return api(path, { method, body, auth, retry: false, formData });
     } catch (error) {
       clearSession();
 
@@ -142,6 +146,28 @@ export async function api(path, { method = "GET", body, auth = true, retry = tru
   }
 
   return data || {};
+}
+
+/** Open an authenticated `/api/files/...` (or absolute) document URL. */
+export async function openApiFile(url) {
+  if (!url) throw new Error("No file URL");
+  if (/^https?:\/\//i.test(url) && !url.includes("/api/files/")) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  const path = url.startsWith("http") ? new URL(url).pathname + new URL(url).search : url;
+  const headers = {};
+  if (getToken()) headers.Authorization = `Bearer ${getToken()}`;
+  const activeCompany = getActiveCompany();
+  if (activeCompany?.id) headers["X-Company-Id"] = String(activeCompany.id);
+
+  const res = await fetch(`${BASE}${path}`, { headers });
+  if (!res.ok) throw new Error("Could not open file");
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  window.open(objectUrl, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 export async function fetchAll(path, listKey, maxPages = 10) {

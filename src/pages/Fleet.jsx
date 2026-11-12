@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, fetchAll } from "../api";
+import { api, fetchAll, openApiFile } from "../api";
 import { endpoints } from "../api/endpoints";
 import {
   Banner,
@@ -22,6 +22,191 @@ import {
 } from "../components/ui";
 import { blankIssues, formatDate, hasIssues, includesQuery, today, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
+
+const VEHICLE_DOC_TYPES = ["RC", "INSURANCE", "FITNESS", "PERMIT", "PUC", "ROAD_TAX"];
+
+function VehicleDocUpload({ vehicleId, onUploaded }) {
+  const [error, setError] = useState("");
+  const [issues, setIssues] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    document_type: "RC",
+    document_number: "",
+    issue_date: "",
+    expiry_date: "",
+    file: null,
+  });
+
+  const set = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setIssues((current) => ({ ...current, [key]: "" }));
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const nextIssues = blankIssues([
+      ["document_type", form.document_type, "Select document type"],
+      ["document_number", form.document_number, "Enter document number"],
+      ["issue_date", form.issue_date, "Choose issue date"],
+      ["expiry_date", form.expiry_date, "Choose expiry date"],
+    ]);
+    if (!form.file) nextIssues.file = "Choose a PDF / JPG / PNG file";
+    setIssues(nextIssues);
+    if (hasIssues(nextIssues)) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      const fd = new FormData();
+      fd.append("document_type", form.document_type);
+      fd.append("document_number", form.document_number.trim());
+      fd.append("issue_date", form.issue_date);
+      fd.append("expiry_date", form.expiry_date);
+      fd.append("file", form.file);
+      await api(endpoints.vehicleDocumentsFor(vehicleId), { method: "POST", formData: fd });
+      setForm({
+        document_type: "RC",
+        document_number: "",
+        issue_date: "",
+        expiry_date: "",
+        file: null,
+      });
+      onUploaded();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="form-grid" noValidate>
+      <FormLegend />
+      <Field label="Document type" required error={issues.document_type}>
+        <Select value={form.document_type} onChange={set("document_type")}>
+          {VEHICLE_DOC_TYPES.map((type) => (
+            <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Document number" required error={issues.document_number}>
+        <input value={form.document_number} onChange={set("document_number")} placeholder="RC / policy no." />
+      </Field>
+      <Field label="Issue date" required error={issues.issue_date}>
+        <input type="date" value={form.issue_date} onChange={set("issue_date")} />
+      </Field>
+      <Field label="Expiry date" required error={issues.expiry_date}>
+        <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
+      </Field>
+      <Field label="File (PDF / JPG / PNG)" required error={issues.file} hint="Upload only — URL paste is not used here">
+        <input
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+          onChange={(event) => {
+            setForm((current) => ({ ...current, file: event.target.files?.[0] || null }));
+            setIssues((current) => ({ ...current, file: "" }));
+          }}
+        />
+      </Field>
+      {form.file ? <p className="muted span-2">Selected: {form.file.name}</p> : null}
+      {error ? <p className="form-error span-2">{error}</p> : null}
+      <div className="form-actions span-2">
+        <button className="btn btn-primary" type="submit" disabled={busy}>
+          {busy ? "Uploading..." : "Upload document"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function VehicleDocsPanel({ vehicle, onClose, toast }) {
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showUpload, setShowUpload] = useState(false);
+
+  const loadDocs = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api(`${endpoints.vehicleDocumentsFor(vehicle.id)}?limit=100`);
+      setDocs(data.documents || []);
+    } catch (err) {
+      setError(err.message);
+      setDocs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDocs();
+  }, [vehicle.id]);
+
+  const openFile = async (url) => {
+    try {
+      await openApiFile(url);
+    } catch (err) {
+      toast(err.message || "Could not open file");
+    }
+  };
+
+  return (
+    <div className="stack">
+      <DetailList rows={[
+        ["Type", vehicle.type_name],
+        ["Make", vehicle.make],
+        ["Model", vehicle.model],
+        ["Ownership", vehicle.ownership],
+        ["Capacity", vehicle.capacity],
+        ["Availability", vehicle.availability_status ? String(vehicle.availability_status).replaceAll("_", " ") : null],
+        ["Status", Number(vehicle.status) === 1 ? "Active" : Number(vehicle.status) === 2 ? "Maintenance" : "Inactive"],
+      ]} />
+
+      <div className="card-head" style={{ padding: 0 }}>
+        <h3 style={{ margin: 0 }}>Documents</h3>
+        <button className="btn btn-primary table-action" type="button" onClick={() => setShowUpload((v) => !v)}>
+          {showUpload ? "Hide upload" : "Upload document"}
+        </button>
+      </div>
+      <Banner>{error}</Banner>
+      {showUpload ? (
+        <VehicleDocUpload
+          vehicleId={vehicle.id}
+          onUploaded={() => {
+            setShowUpload(false);
+            toast("Document uploaded");
+            loadDocs();
+          }}
+        />
+      ) : null}
+      {loading ? <p className="muted">Loading documents...</p> : (
+        <DataTable
+          rows={docs}
+          empty="No documents for this vehicle yet."
+          emptyAction={{ label: "Upload document", onClick: () => setShowUpload(true) }}
+          columns={[
+            { key: "type", label: "Type", render: (row) => row.document_type },
+            { key: "number", label: "Number", render: (row) => row.document_number || "—" },
+            { key: "issue", label: "Issue", render: (row) => formatDate(row.issue_date) },
+            { key: "expiry", label: "Expiry", render: (row) => formatDate(row.expiry_date) },
+            { key: "verify", label: "Verify", render: (row) => row.verification_status || "—" },
+            {
+              key: "file",
+              label: "File",
+              render: (row) => (row.document_url
+                ? <button className="btn btn-ghost table-action" type="button" onClick={() => openFile(row.document_url)}>Open</button>
+                : "—"),
+            },
+          ]}
+        />
+      )}
+      <div className="form-actions">
+        <button className="btn btn-ghost" type="button" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
 
 function VehicleForm({ types, onClose, onCreated }) {
   const [error, setError] = useState("");
@@ -440,6 +625,9 @@ export default function Fleet() {
                 render: (row) => (
                   <RowActions>
                     <ViewButton onClick={() => setDetail({ kind: "vehicle", row })} />
+                    <button className="btn btn-ghost table-action" type="button" onClick={() => setDetail({ kind: "vehicle", row, docs: true })}>
+                      Docs
+                    </button>
                     <DeleteButton
                       disabled={Number(row.status) === 0}
                       confirmMessage={`Deactivate ${row.registration_no || "this vehicle"}?`}
@@ -455,17 +643,13 @@ export default function Fleet() {
       </article>
 
       {detail ? (
-        <Modal title={detail.kind === "vehicle" ? detail.row.registration_no : detail.row.vehicle_name} onClose={() => setDetail(null)}>
+        <Modal
+          title={detail.kind === "vehicle" ? detail.row.registration_no : detail.row.vehicle_name}
+          onClose={() => setDetail(null)}
+          wide={detail.kind === "vehicle"}
+        >
           {detail.kind === "vehicle" ? (
-            <DetailList rows={[
-              ["Type", detail.row.type_name],
-              ["Make", detail.row.make],
-              ["Model", detail.row.model],
-              ["Ownership", detail.row.ownership],
-              ["Capacity", detail.row.capacity],
-              ["Availability", detail.row.availability_status ? String(detail.row.availability_status).replaceAll("_", " ") : null],
-              ["Status", Number(detail.row.status) === 1 ? "Active" : Number(detail.row.status) === 2 ? "Maintenance" : "Inactive"],
-            ]} />
+            <VehicleDocsPanel vehicle={detail.row} onClose={() => setDetail(null)} toast={toast} />
           ) : (
             <DetailList rows={[
               ["Vehicle", detail.row.vehicle_name],

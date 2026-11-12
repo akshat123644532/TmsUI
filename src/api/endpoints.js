@@ -29,6 +29,7 @@ export const endpoints = {
 
   vehicleDocuments: "/api/vehicle-documents",
   vehicleDocument: (id) => `/api/vehicle-documents/${id}`,
+  vehicleDocumentsFor: (vehicleId) => `/api/vehicle-documents/${vehicleId}`,
   driverDocuments: "/api/driver-documents",
   driverDocument: (driverId) => `/api/driver-documents/${driverId}`,
   helperDocuments: "/api/helper-documents",
