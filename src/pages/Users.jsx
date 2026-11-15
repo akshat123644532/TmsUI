@@ -306,7 +306,7 @@ export default function Users() {
 
   return (
     <section>
-      <PageHeader title="Users" subtitle="Add company users and set what each can do with a direct module/action checklist — no roles.">
+      <PageHeader title="Users" subtitle="Create Company Users, then assign module access (View / Create-Edit / Approve-Other). No roles.">
         <button className="btn btn-primary" type="button" onClick={() => setEditing(null)}>
           Add User
         </button>

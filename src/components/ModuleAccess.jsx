@@ -15,18 +15,21 @@ export const ACCESS_FLAGS = [
   "can_close",
 ];
 
-/** Mirrors backend utils/moduleActions.js — actions the API accepts per module. */
+/**
+ * BRD §3.2 — View | Create/Edit | Approve/Other
+ * Mirrors backend utils/moduleActions.js
+ */
 const MODULE_ACTIONS = {
-  Vehicles: ["can_view", "can_create", "can_update", "can_delete", "can_approve"],
-  "Drivers & Helpers": ["can_view", "can_create", "can_update", "can_delete"],
+  Vehicles: ["can_view", "can_create", "can_update", "can_delete", "can_export", "can_approve"],
+  "Drivers & Helpers": ["can_view", "can_create", "can_update", "can_delete", "can_export"],
   Bilty: ["can_view", "can_create", "can_update", "can_delete"],
-  Trips: ["can_view", "can_create", "can_update", "can_delete", "can_approve", "can_dispatch"],
-  "Trip Expenses": ["can_view", "can_create", "can_approve"],
+  Trips: ["can_view", "can_create", "can_update", "can_delete", "can_dispatch", "can_close", "can_approve"],
+  "Trip Expenses": ["can_view", "can_create", "can_update", "can_approve"],
   "Trip Settlement": ["can_view", "can_create", "can_approve"],
   Clients: ["can_view", "can_create", "can_update", "can_delete"],
   Invoices: ["can_view", "can_create", "can_update", "can_delete", "can_approve"],
   Payments: ["can_view", "can_create", "can_approve"],
-  Reports: ["can_view"],
+  Reports: ["can_view", "can_export"],
   "Audit Logs": ["can_view"],
 };
 
@@ -39,18 +42,28 @@ const MODULE_ALIASES = {
   "Vehicle Assignments": "Vehicles",
 };
 
+const FLAG_META = {
+  can_view: { label: "View", group: "View" },
+  can_create: { label: "Create", group: "Create/Edit" },
+  can_update: { label: "Edit", group: "Create/Edit" },
+  can_delete: { label: "Cancel/Delete", group: "Create/Edit" },
+  can_approve: { label: "Approve/Other", group: "Approve/Other" },
+  can_export: { label: "Export", group: "Approve/Other" },
+  can_dispatch: { label: "Dispatch", group: "Approve/Other" },
+  can_close: { label: "Close", group: "Approve/Other" },
+};
+
 export function allowedActions(moduleName) {
   return MODULE_ACTIONS[MODULE_ALIASES[moduleName] || moduleName] || null;
 }
 
 function flagLabel(flag) {
-  return flag.replace("can_", "");
+  return FLAG_META[flag]?.label || flag.replace("can_", "");
 }
 
 /**
- * Direct module/action checklist for one user.
- * Loads GET /api/modules + GET /api/user-module-access/:userId and saves with
- * PUT /api/user-module-access/:userId { modules: [{ module_id, actions }] }.
+ * Direct module/action checklist for one user (no Roles).
+ * GET modules + access, save with PUT { modules: [{ module_id, actions }] }.
  */
 export function ModuleAccessEditor({ userId, onSaved, onCancel, submitLabel = "Save access", toast }) {
   const [checked, setChecked] = useState({});
@@ -127,9 +140,13 @@ export function ModuleAccessEditor({ userId, onSaved, onCancel, submitLabel = "S
 
   return (
     <div className="access-editor">
+      <p className="muted pad" style={{ paddingTop: 0 }}>
+        BRD checklist — <strong>View</strong>, <strong>Create/Edit</strong> (create · edit · cancel/delete),
+        and <strong>Approve/Other</strong> (approve · export · dispatch · close). Only allowed actions show per module. No roles.
+      </p>
       <DataTable
         rows={modules.map((row) => ({ ...row, _key: row.id }))}
-        empty="No modules are available."
+        empty="No modules are available. Seed module_definitions on the API first."
         columns={[
           { key: "name", label: "Module", render: (row) => row.name },
           ...ACCESS_FLAGS.map((flag) => ({
@@ -140,6 +157,7 @@ export function ModuleAccessEditor({ userId, onSaved, onCancel, submitLabel = "S
                 <input
                   type="checkbox"
                   aria-label={`${row.name} ${flagLabel(flag)}`}
+                  title={FLAG_META[flag]?.group || flag}
                   checked={Boolean(checked[String(row.id)]?.has(flag))}
                   onChange={(event) => toggle(row.id, flag, event.target.checked)}
                 />

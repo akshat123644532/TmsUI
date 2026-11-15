@@ -39,7 +39,7 @@ export default function Access() {
 
   return (
     <section>
-      <PageHeader title="Module Access" subtitle="No roles — tick the modules and actions each user can use, then save to replace their access." />
+      <PageHeader title="Module Access" subtitle="BRD §3.2 — Company Admin assigns View / Create-Edit / Approve-Other per module. No Role dropdown." />
       <Banner>{error}</Banner>
       <article className="card table-card">
         <div className="card-head">
