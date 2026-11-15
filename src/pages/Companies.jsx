@@ -137,13 +137,17 @@ export default function Companies() {
     }
   };
 
-  const openDesk = (row) => {
+  const openDesk = async (row) => {
     if (Number(row.status) !== 1) {
       toast("Activate the company before opening its desk");
       return;
     }
-    selectCompany({ id: row.id, name: row.name });
-    toast(`Opened ${row.name}`);
+    try {
+      await selectCompany({ id: row.id, name: row.name });
+      toast(`Opened ${row.name}`);
+    } catch (err) {
+      toast(err.message || "Could not open company desk");
+    }
   };
 
   return (

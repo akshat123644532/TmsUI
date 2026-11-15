@@ -9,6 +9,7 @@ export const endpoints = {
   logout: "/api/logout",
   register: "/api/auth/register",
   profile: "/api/profile",
+  selectCompany: "/api/auth/select-company",
 
   users: "/api/users",
   user: (id) => `/api/users/${id}`,

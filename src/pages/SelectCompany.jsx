@@ -97,6 +97,7 @@ export default function SelectCompany() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [picking, setPicking] = useState(false);
   const autoPicked = useRef(false);
 
   const reload = () => {
@@ -144,19 +145,26 @@ export default function SelectCompany() {
     };
   }, [loadCompanies]);
 
-  const choose = (row) => {
-    selectCompany({ id: row.id, name: row.name });
-    navigate("/", { replace: true });
+  const choose = async (row) => {
+    setPicking(true);
+    setError("");
+    try {
+      await selectCompany({ id: row.id, name: row.name });
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(err.message || "Could not open company desk");
+      autoPicked.current = false;
+    } finally {
+      setPicking(false);
+    }
   };
 
   useEffect(() => {
-    if (busy || creating || error || autoPicked.current) return;
+    if (busy || creating || error || picking || autoPicked.current) return;
     if (companies.length !== 1 || !needsCompanySelection) return;
     autoPicked.current = true;
-    const only = companies[0];
-    selectCompany({ id: only.id, name: only.name });
-    navigate("/", { replace: true });
-  }, [busy, creating, error, companies, needsCompanySelection, selectCompany, navigate]);
+    choose(companies[0]);
+  }, [busy, creating, error, picking, companies, needsCompanySelection]);
 
   if (!authed) return <Navigate to="/login" replace />;
   if (!isSuperAdminRole(user?.user_type)) return <Navigate to="/" replace />;
@@ -206,7 +214,9 @@ export default function SelectCompany() {
             </p>
           </div>
 
-          {busy ? <p className="muted">Loading companies...</p> : null}
+          {busy || picking ? (
+            <p className="muted">{picking ? "Opening company desk..." : "Loading companies..."}</p>
+          ) : null}
           {error ? <p className="form-error">{error}</p> : null}
 
           {!busy && creating ? (
@@ -220,12 +230,12 @@ export default function SelectCompany() {
                 const match =
                   rows.find((row) => String(row.id) === String(companyRow?.id)) ||
                   companyRow;
-                if (match?.id) choose(match);
+                if (match?.id) await choose(match);
               }}
             />
           ) : null}
 
-          {!busy && !creating ? (
+          {!busy && !creating && !picking ? (
             <>
               <div className="company-pick-list">
                 {companies.map((row) => (
@@ -234,6 +244,7 @@ export default function SelectCompany() {
                     type="button"
                     className="company-pick-item"
                     onClick={() => choose(row)}
+                    disabled={picking}
                   >
                     <span className="company-pick-mark">
                       <Icon name="crm" size={18} />

@@ -80,9 +80,9 @@ export default function Shell() {
         if (!live || !match?.name) return;
         setCompanyName(match.name);
         if (String(company?.id) === String(match.id) && company?.name !== match.name) {
-          selectCompany({ id: match.id, name: match.name });
+          selectCompany({ id: match.id, name: match.name }, { syncSession: false });
         } else if (!company?.name && match.name) {
-          selectCompany({ id: match.id, name: match.name });
+          selectCompany({ id: match.id, name: match.name }, { syncSession: false });
         }
       })
       .catch(() => {});

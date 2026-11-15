@@ -10,6 +10,7 @@ import {
   setActiveCompany,
   setSession,
 } from "./api";
+import { endpoints } from "./api/endpoints";
 import { isSuperAdminRole, normalizeRole } from "./lib";
 
 const AuthContext = createContext(null);
@@ -49,11 +50,58 @@ export function AuthProvider({ children }) {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [company, setCompanyState] = useState(() => getActiveCompany());
 
-  const selectCompany = useCallback((next) => {
-    const saved = setActiveCompany(next);
+  /**
+   * Super Admin company bind must hit POST /api/auth/select-company so the
+   * JWT gets active_company_id. Local X-Company-Id alone is ignored by API.
+   */
+  const selectCompany = useCallback(async (next, { syncSession = true } = {}) => {
+    if (!next?.id) {
+      setActiveCompany(null);
+      setCompanyState(null);
+      return null;
+    }
+
+    const label = {
+      id: next.id,
+      name: next.name || `Company #${next.id}`,
+    };
+
+    if (
+      syncSession &&
+      isSuperAdminRole(user?.user_type || getUser()?.user_type) &&
+      getToken() &&
+      getToken() !== DEMO_TOKEN
+    ) {
+      const data = await api(endpoints.selectCompany, {
+        method: "POST",
+        body: {
+          company_id: Number(next.id),
+          refresh_token: getRefreshToken() || undefined,
+        },
+      });
+
+      if (data?.token && data?.user) {
+        const nextUser = {
+          ...data.user,
+          user_type: normalizeRole(data.user.user_type) || data.user.user_type,
+          company_name: label.name,
+        };
+        setSession({ ...data, user: nextUser });
+        setUser(nextUser);
+      }
+
+      const saved = setActiveCompany({
+        id: data?.user?.company_id || label.id,
+        name: label.name,
+      });
+      setCompanyState(saved);
+      return saved;
+    }
+
+    const saved = setActiveCompany(label);
     setCompanyState(saved);
     return saved;
-  }, []);
+  }, [user?.user_type]);
 
   const bindCompanyForUser = useCallback((nextUser) => {
     if (isSuperAdminRole(nextUser?.user_type)) {
@@ -152,6 +200,14 @@ export function AuthProvider({ children }) {
 
     if (!isSuperAdminRole(nextUser.user_type)) {
       bindCompanyForUser(nextUser);
+    } else if (nextUser.company_id) {
+      // Profile may return active company from JWT claim.
+      const existing = getActiveCompany();
+      const saved = setActiveCompany({
+        id: nextUser.company_id,
+        name: existing?.name || nextUser.company_name || `Company #${nextUser.company_id}`,
+      });
+      setCompanyState(saved);
     }
 
     return nextUser;
