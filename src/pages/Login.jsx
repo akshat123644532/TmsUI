@@ -31,11 +31,8 @@ export default function Login() {
 
     try {
       const nextUser = await login(email.trim(), password);
-      if (isSuperAdminRole(nextUser?.user_type)) {
-        navigate("/select-company", { replace: true });
-      } else {
-        navigate("/", { replace: true });
-      }
+      // Super Admin must pick (or auto-pick) a company before the desk opens.
+      navigate(isSuperAdminRole(nextUser?.user_type) ? "/select-company" : "/", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

@@ -5,6 +5,7 @@ import { ToastProvider } from "./toast";
 import Shell from "./components/Shell";
 import Login from "./pages/Login";
 import SelectCompany from "./pages/SelectCompany";
+import Companies from "./pages/Companies";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import Loads from "./pages/Loads";
@@ -60,6 +61,7 @@ export default function App() {
               <Route path="/select-company" element={<SelectCompany />} />
               <Route element={<Private />}>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/companies" element={<Companies />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="/access" element={<Access />} />
                 <Route path="/audit" element={<Audit />} />

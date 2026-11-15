@@ -12,6 +12,7 @@ const NAV_GROUPS = [
     label: "Overview",
     items: [
       { to: "/", label: "Dashboard", icon: "grid" },
+      { to: "/companies", label: "Companies", icon: "crm", superAdmin: true },
       { to: "/users", label: "Users", icon: "gear", admin: true },
       { to: "/access", label: "Module Access", icon: "gear", admin: true },
       { to: "/audit", label: "Audit Logs", icon: "file", admin: true },
@@ -283,7 +284,11 @@ export default function Shell() {
 
         <nav className="nav">
           {NAV_GROUPS.map((group) => {
-            const items = group.items.filter((item) => !item.admin || isAdminRole(user?.user_type));
+            const items = group.items.filter((item) => {
+              if (item.superAdmin) return isSuperAdminRole(user?.user_type);
+              if (item.admin) return isAdminRole(user?.user_type);
+              return true;
+            });
             if (!items.length) return null;
             return (
               <div className="nav-group" key={group.label}>

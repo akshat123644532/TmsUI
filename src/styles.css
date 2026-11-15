@@ -835,7 +835,8 @@ tr.row-hit td { background: rgba(240, 180, 41, 0.14); }
 }
 .company-switch:hover { color: var(--gold-2); }
 
-.company-pick-card { width: min(440px, 100%); }
+.company-pick-card { width: min(520px, 100%); }
+.company-create-form { margin-top: 4px; }
 .company-pick-list {
   display: flex;
   flex-direction: column;

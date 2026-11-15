@@ -94,7 +94,13 @@ export function AuthProvider({ children }) {
         setSession({ ...data, user: nextUser });
         setUser(nextUser);
         setAuthed(true);
-        bindCompanyForUser(nextUser);
+        // Fresh Super Admin login always re-picks company (ignore stale localStorage).
+        if (isSuperAdminRole(nextUser.user_type)) {
+          setActiveCompany(null);
+          setCompanyState(null);
+        } else {
+          bindCompanyForUser(nextUser);
+        }
         return nextUser;
       }
     } catch (error) {
