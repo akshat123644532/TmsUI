@@ -837,6 +837,344 @@ tr.row-hit td { background: rgba(240, 180, 41, 0.14); }
 
 .company-pick-card { width: min(520px, 100%); }
 .company-create-form { margin-top: 4px; }
+
+/* Fleet: assignments + document upload polish */
+.assign-form,
+.doc-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.assign-role-banner,
+.doc-upload-head,
+.vehicle-meta {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--card-2);
+}
+
+.assign-role-banner.driver {
+  background: linear-gradient(135deg, rgba(240, 180, 41, 0.12), transparent 70%);
+  border-color: rgba(240, 180, 41, 0.28);
+}
+
+.assign-role-banner.helper {
+  background: linear-gradient(135deg, rgba(61, 214, 140, 0.1), transparent 70%);
+  border-color: rgba(61, 214, 140, 0.24);
+}
+
+.assign-role-banner p,
+.doc-upload-head p,
+.vehicle-meta p,
+.crew-card-dates {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.assign-role-icon,
+.doc-upload-icon,
+.vehicle-meta-mark,
+.crew-card-icon,
+.dropzone-icon,
+.person-pick-avatar,
+.person-cell-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--kpi-icon);
+  color: var(--gold);
+}
+
+.person-pick-avatar,
+.person-cell-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.person-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.person-pick-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--input);
+  color: var(--muted);
+}
+
+.person-pick-search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 11px 0;
+  outline: none;
+  font: inherit;
+}
+
+.person-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.person-pick-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--input);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.person-pick-card:hover {
+  border-color: rgba(240, 180, 41, 0.35);
+  background: var(--hover);
+}
+
+.person-pick-card.active {
+  border-color: var(--gold);
+  background: rgba(240, 180, 41, 0.1);
+  box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.15);
+}
+
+.person-pick-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.person-pick-copy strong {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-pick-copy small,
+.person-pick-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.person-pick-empty {
+  grid-column: 1 / -1;
+  margin: 8px 0;
+  text-align: center;
+}
+
+.assign-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card-2);
+}
+
+.crew-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.crew-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--card-2);
+  min-height: 148px;
+}
+
+.crew-card.driver {
+  background: linear-gradient(160deg, rgba(240, 180, 41, 0.1), var(--card-2) 55%);
+}
+
+.crew-card.helper {
+  background: linear-gradient(160deg, rgba(61, 214, 140, 0.08), var(--card-2) 55%);
+}
+
+.crew-card-top,
+.crew-card-actions,
+.panel-section-head,
+.person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.crew-card-top { justify-content: flex-start; }
+.crew-card-actions { margin-top: auto; flex-wrap: wrap; }
+.crew-card-role {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.crew-card-name { font-size: 16px; }
+
+.panel-section-head {
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.panel-section-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.panel-section-head .muted {
+  margin: 4px 0 0;
+}
+
+.role-pill,
+.doc-type-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.role-pill.driver {
+  color: #ffd27a;
+  background: rgba(240, 180, 41, 0.14);
+}
+
+.role-pill.helper {
+  color: #8dffbe;
+  background: rgba(61, 214, 140, 0.12);
+}
+
+[data-theme="light"] .role-pill.driver {
+  color: #8a5a00;
+  background: rgba(197, 133, 18, 0.14);
+}
+
+[data-theme="light"] .role-pill.helper {
+  color: #1b5c38;
+  background: rgba(45, 140, 90, 0.12);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-btn {
+  border: 1px solid var(--line);
+  background: var(--input);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.chip-btn.active {
+  border-color: var(--gold);
+  background: rgba(240, 180, 41, 0.14);
+  color: var(--gold-2);
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 140px;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1.5px dashed rgba(240, 180, 41, 0.35);
+  background:
+    linear-gradient(180deg, rgba(240, 180, 41, 0.06), transparent 60%),
+    var(--input);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.dropzone:hover,
+.dropzone.drag {
+  border-color: var(--gold);
+  background: rgba(240, 180, 41, 0.1);
+}
+
+.dropzone.has-file {
+  border-style: solid;
+}
+
+.dropzone.invalid {
+  border-color: rgba(240, 113, 120, 0.75);
+}
+
+.dropzone strong {
+  font-size: 14px;
+}
+
+.dropzone small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.vehicle-meta {
+  align-items: center;
+}
+
+.vehicle-meta strong {
+  font-size: 16px;
+}
+
+@media (max-width: 720px) {
+  .person-pick-grid,
+  .crew-grid,
+  .assign-dates {
+    grid-template-columns: 1fr;
+  }
+}
 .company-pick-list {
   display: flex;
   flex-direction: column;

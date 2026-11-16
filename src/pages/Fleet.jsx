@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fetchAll, openApiFile } from "../api";
 import { endpoints } from "../api/endpoints";
+import { Icon } from "../components/Icons";
 import {
   Banner,
   DataTable,
@@ -20,15 +21,63 @@ import {
   Tabs,
   ViewButton,
 } from "../components/ui";
-import { blankIssues, formatDate, hasIssues, includesQuery, today, usePaged, useResource, useSearchFocus } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, initials, today, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
 
 const VEHICLE_DOC_TYPES = ["RC", "INSURANCE", "FITNESS", "PERMIT", "PUC", "ROAD_TAX"];
+
+function PersonPickList({ people, value, onChange, emptyLabel }) {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return people;
+    return people.filter((row) =>
+      [row.name, row.mobile, row.email].filter(Boolean).join(" ").toLowerCase().includes(needle)
+    );
+  }, [people, search]);
+
+  return (
+    <div className="person-pick">
+      <div className="person-pick-search">
+        <Icon name="search" size={15} />
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search by name or mobile"
+        />
+      </div>
+      <div className="person-pick-grid" role="listbox" aria-label="People">
+        {filtered.map((row) => {
+          const active = String(value) === String(row.id);
+          return (
+            <button
+              key={row.id}
+              type="button"
+              role="option"
+              aria-selected={active}
+              className={`person-pick-card${active ? " active" : ""}`}
+              onClick={() => onChange(String(row.id))}
+            >
+              <span className="person-pick-avatar">{initials(row.name)}</span>
+              <span className="person-pick-copy">
+                <strong>{row.name}</strong>
+                <small>{row.mobile || row.email || `ID ${row.id}`}</small>
+              </span>
+              {active ? <Icon name="check" size={15} /> : null}
+            </button>
+          );
+        })}
+        {!filtered.length ? <p className="muted person-pick-empty">{emptyLabel}</p> : null}
+      </div>
+    </div>
+  );
+}
 
 function VehicleDocUpload({ vehicleId, onUploaded }) {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [form, setForm] = useState({
     document_type: "RC",
     document_number: "",
@@ -40,6 +89,12 @@ function VehicleDocUpload({ vehicleId, onUploaded }) {
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
     setIssues((current) => ({ ...current, [key]: "" }));
+  };
+
+  const takeFile = (file) => {
+    if (!file) return;
+    setForm((current) => ({ ...current, file }));
+    setIssues((current) => ({ ...current, file: "" }));
   };
 
   const submit = async (event) => {
@@ -80,37 +135,83 @@ function VehicleDocUpload({ vehicleId, onUploaded }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid" noValidate>
-      <FormLegend />
-      <Field label="Document type" required error={issues.document_type}>
-        <Select value={form.document_type} onChange={set("document_type")}>
-          {VEHICLE_DOC_TYPES.map((type) => (
-            <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Document number" required error={issues.document_number}>
-        <input value={form.document_number} onChange={set("document_number")} placeholder="RC / policy no." />
-      </Field>
-      <Field label="Issue date" required error={issues.issue_date}>
-        <input type="date" value={form.issue_date} onChange={set("issue_date")} />
-      </Field>
-      <Field label="Expiry date" required error={issues.expiry_date}>
-        <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
-      </Field>
-      <Field label="File (PDF / JPG / PNG)" required error={issues.file} hint="Upload only — URL paste is not used here">
+    <form onSubmit={submit} className="doc-upload" noValidate>
+      <div className="doc-upload-head">
+        <span className="doc-upload-icon">
+          <Icon name="file" size={18} />
+        </span>
+        <div>
+          <strong>Upload vehicle document</strong>
+          <p>Choose type, dates, then drop the file.</p>
+        </div>
+      </div>
+
+      <div className="chip-row" role="group" aria-label="Document type">
+        {VEHICLE_DOC_TYPES.map((type) => (
+          <button
+            key={type}
+            type="button"
+            className={`chip-btn${form.document_type === type ? " active" : ""}`}
+            onClick={() => {
+              setForm((current) => ({ ...current, document_type: type }));
+              setIssues((current) => ({ ...current, document_type: "" }));
+            }}
+          >
+            {type.replaceAll("_", " ")}
+          </button>
+        ))}
+      </div>
+      {issues.document_type ? <small className="field-error">{issues.document_type}</small> : null}
+
+      <div className="form-grid">
+        <Field label="Document number" required error={issues.document_number}>
+          <input value={form.document_number} onChange={set("document_number")} placeholder="RC / policy no." />
+        </Field>
+        <Field label="Issue date" required error={issues.issue_date}>
+          <input type="date" value={form.issue_date} onChange={set("issue_date")} />
+        </Field>
+        <Field label="Expiry date" required error={issues.expiry_date}>
+          <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
+        </Field>
+      </div>
+
+      <label
+        className={`dropzone${dragOver ? " drag" : ""}${issues.file ? " invalid" : ""}${form.file ? " has-file" : ""}`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragOver(false);
+          takeFile(event.dataTransfer.files?.[0] || null);
+        }}
+      >
         <input
           type="file"
           accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
-          onChange={(event) => {
-            setForm((current) => ({ ...current, file: event.target.files?.[0] || null }));
-            setIssues((current) => ({ ...current, file: "" }));
-          }}
+          hidden
+          onChange={(event) => takeFile(event.target.files?.[0] || null)}
         />
-      </Field>
-      {form.file ? <p className="muted span-2">Selected: {form.file.name}</p> : null}
-      {error ? <p className="form-error span-2">{error}</p> : null}
-      <div className="form-actions span-2">
+        <span className="dropzone-icon">
+          <Icon name="download" size={22} />
+        </span>
+        {form.file ? (
+          <>
+            <strong>{form.file.name}</strong>
+            <small>{Math.max(1, Math.round(form.file.size / 1024))} KB · click to replace</small>
+          </>
+        ) : (
+          <>
+            <strong>Drop file here or browse</strong>
+            <small>PDF, JPG, PNG, WEBP</small>
+          </>
+        )}
+      </label>
+      {issues.file ? <small className="field-error">{issues.file}</small> : null}
+      {error ? <p className="form-error">{error}</p> : null}
+      <div className="form-actions">
         <button className="btn btn-primary" type="submit" disabled={busy}>
           {busy ? "Uploading..." : "Upload document"}
         </button>
@@ -153,19 +254,25 @@ function VehicleDocsPanel({ vehicle, onClose, toast }) {
 
   return (
     <div className="stack">
-      <DetailList rows={[
-        ["Type", vehicle.type_name],
-        ["Make", vehicle.make],
-        ["Model", vehicle.model],
-        ["Ownership", vehicle.ownership],
-        ["Capacity", vehicle.capacity],
-        ["Availability", vehicle.availability_status ? String(vehicle.availability_status).replaceAll("_", " ") : null],
-        ["Status", Number(vehicle.status) === 1 ? "Active" : Number(vehicle.status) === 2 ? "Maintenance" : "Inactive"],
-      ]} />
+      <div className="vehicle-meta">
+        <span className="vehicle-meta-mark">
+          <Icon name="truck" size={18} />
+        </span>
+        <div>
+          <strong>{vehicle.registration_no}</strong>
+          <p>
+            {[vehicle.type_name, vehicle.make, vehicle.model].filter(Boolean).join(" · ") || "Vehicle details"}
+          </p>
+        </div>
+        <StatusPill value={vehicle.status} active />
+      </div>
 
-      <div className="card-head" style={{ padding: 0 }}>
-        <h3 style={{ margin: 0 }}>Documents</h3>
-        <button className="btn btn-primary table-action" type="button" onClick={() => setShowUpload((v) => !v)}>
+      <div className="panel-section-head">
+        <div>
+          <h3>Documents</h3>
+          <p className="muted">{docs.length ? `${docs.length} on file` : "RC, insurance, fitness and more"}</p>
+        </div>
+        <button className="btn btn-primary" type="button" onClick={() => setShowUpload((v) => !v)}>
           {showUpload ? "Hide upload" : "Upload document"}
         </button>
       </div>
@@ -186,7 +293,11 @@ function VehicleDocsPanel({ vehicle, onClose, toast }) {
           empty="No documents for this vehicle yet."
           emptyAction={{ label: "Upload document", onClick: () => setShowUpload(true) }}
           columns={[
-            { key: "type", label: "Type", render: (row) => row.document_type },
+            {
+              key: "type",
+              label: "Type",
+              render: (row) => <span className="doc-type-pill">{row.document_type}</span>,
+            },
             { key: "number", label: "Number", render: (row) => row.document_number || "—" },
             { key: "issue", label: "Issue", render: (row) => formatDate(row.issue_date) },
             { key: "expiry", label: "Expiry", render: (row) => formatDate(row.expiry_date) },
@@ -427,9 +538,26 @@ function AssignmentForm({
     }
   };
 
+  const people = role === "HELPER" ? helpers : drivers;
+
   return (
-    <form onSubmit={submit} className="form-grid" noValidate>
+    <form onSubmit={submit} className="assign-form" noValidate>
+      <div className={`assign-role-banner ${role === "HELPER" ? "helper" : "driver"}`}>
+        <span className="assign-role-icon">
+          <Icon name="users" size={18} />
+        </span>
+        <div>
+          <strong>{role === "HELPER" ? "Helper assignment" : "Driver assignment"}</strong>
+          <p>
+            {editing
+              ? "Update dates or switch the person on this vehicle."
+              : "Pick one person and an effective start date. Keep end date empty while open."}
+          </p>
+        </div>
+      </div>
+
       <FormLegend />
+
       <Field label="Vehicle" required error={issues.vehicle_id}>
         <Select
           value={form.vehicle_id}
@@ -442,33 +570,41 @@ function AssignmentForm({
           ))}
         </Select>
       </Field>
-      <Field
-        label={role === "HELPER" ? "Helper" : "Driver"}
-        required
-        error={issues.person_id}
-      >
-        <Select value={form.person_id} onChange={set("person_id")}>
-          <option value="">{role === "HELPER" ? "Select helper" : "Select driver"}</option>
-          {(role === "HELPER" ? helpers : drivers).map((row) => (
-            <option key={row.id} value={row.id}>{row.name}</option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Start date" required error={issues.start_date}>
-        <input type="date" value={form.start_date} onChange={set("start_date")} />
-      </Field>
-      <Field label="End date" hint="Leave blank while assignment is open">
-        <input type="date" value={form.end_date} onChange={set("end_date")} />
-      </Field>
-      {editing ? (
-        <Field label="Active">
-          <Select value={form.is_active} onChange={set("is_active")}>
-            <option value="1">Active</option>
-            <option value="0">Closed</option>
-          </Select>
+
+      <div className={`field${issues.person_id ? " invalid" : ""}`}>
+        <span className="field-label">
+          {role === "HELPER" ? "Helper" : "Driver"} <span className="req">*</span>
+        </span>
+        <PersonPickList
+          people={people}
+          value={form.person_id}
+          onChange={(id) => {
+            setForm((current) => ({ ...current, person_id: id }));
+            setIssues((current) => ({ ...current, person_id: "" }));
+          }}
+          emptyLabel={role === "HELPER" ? "No helpers match this search." : "No drivers match this search."}
+        />
+        {issues.person_id ? <small className="field-error">{issues.person_id}</small> : null}
+      </div>
+
+      <div className="assign-dates">
+        <Field label="Start date" required error={issues.start_date}>
+          <input type="date" value={form.start_date} onChange={set("start_date")} />
         </Field>
-      ) : null}
-      {error ? <p className="form-error span-2">{error}</p> : null}
+        <Field label="End date" hint="Optional while open">
+          <input type="date" value={form.end_date} onChange={set("end_date")} />
+        </Field>
+        {editing ? (
+          <Field label="Status">
+            <Select value={form.is_active} onChange={set("is_active")}>
+              <option value="1">Active</option>
+              <option value="0">Closed</option>
+            </Select>
+          </Field>
+        ) : null}
+      </div>
+
+      {error ? <p className="form-error">{error}</p> : null}
       <FormActions
         onCancel={onClose}
         busy={busy}
@@ -548,48 +684,101 @@ function VehicleAssignmentsPanel({
     (row) => String(row.assignment_role).toUpperCase() === "HELPER" && Number(row.is_active) === 1
   );
 
+  const renderCrewCard = (kind, row) => {
+    const isHelper = kind === "HELPER";
+    const name = row ? personLabel(row, driverName, helperName) : null;
+    return (
+      <article className={`crew-card ${isHelper ? "helper" : "driver"}`}>
+        <div className="crew-card-top">
+          <span className="crew-card-icon">
+            <Icon name="users" size={16} />
+          </span>
+          <span className="crew-card-role">{isHelper ? "Helper" : "Driver"}</span>
+          {row ? <StatusPill value={row.is_active} active /> : <span className="pill mute">Open</span>}
+        </div>
+        {row ? (
+          <>
+            <strong className="crew-card-name">{name}</strong>
+            <p className="crew-card-dates">
+              {formatDate(row.start_date)} → {formatDate(row.end_date)}
+            </p>
+            <div className="crew-card-actions">
+              <button
+                className="btn btn-ghost table-action"
+                type="button"
+                onClick={() => setModal({ role: kind, initial: row })}
+              >
+                Edit
+              </button>
+              <DeleteButton
+                label="Close"
+                confirmMessage={`Close this ${isHelper ? "helper" : "driver"} assignment? History is kept.`}
+                onClick={() => closeAssignment(row)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <strong className="crew-card-name muted">Not assigned</strong>
+            <p className="crew-card-dates">Assign someone to keep trip roster clear.</p>
+            <div className="crew-card-actions">
+              <button className="btn btn-primary table-action" type="button" onClick={() => setModal({ role: kind })}>
+                Assign {isHelper ? "helper" : "driver"}
+              </button>
+            </div>
+          </>
+        )}
+      </article>
+    );
+  };
+
   return (
     <div className="stack">
-      <div className="card-head" style={{ padding: 0 }}>
-        <Tabs
-          value={panel}
-          onChange={setPanel}
-          tabs={[
-            { id: "active", label: "Active now" },
-            { id: "history", label: "History" },
-          ]}
-        />
+      <div className="panel-section-head">
+        <div>
+          <h3>Assignments</h3>
+          <p className="muted">Driver and helper are separate effective-dated rows.</p>
+        </div>
         <div className="row-actions">
-          <button className="btn btn-ghost table-action" type="button" onClick={() => setModal({ role: "DRIVER" })}>
+          <button className="btn btn-ghost" type="button" onClick={() => setModal({ role: "DRIVER" })}>
             Assign Driver
           </button>
-          <button className="btn btn-primary table-action" type="button" onClick={() => setModal({ role: "HELPER" })}>
+          <button className="btn btn-primary" type="button" onClick={() => setModal({ role: "HELPER" })}>
             Assign Helper
           </button>
         </div>
       </div>
+
+      <Tabs
+        value={panel}
+        onChange={setPanel}
+        tabs={[
+          { id: "active", label: "Active now" },
+          { id: "history", label: "History" },
+        ]}
+      />
       <Banner>{error}</Banner>
 
       {panel === "active" && !loading ? (
-        <DetailList
-          rows={[
-            ["Active driver", activeDriver ? personLabel(activeDriver, driverName, helperName) : "None"],
-            ["Driver dates", activeDriver ? `${formatDate(activeDriver.start_date)} → ${formatDate(activeDriver.end_date)}` : "—"],
-            ["Active helper", activeHelper ? personLabel(activeHelper, driverName, helperName) : "None"],
-            ["Helper dates", activeHelper ? `${formatDate(activeHelper.start_date)} → ${formatDate(activeHelper.end_date)}` : "—"],
-          ]}
-        />
+        <div className="crew-grid">
+          {renderCrewCard("DRIVER", activeDriver)}
+          {renderCrewCard("HELPER", activeHelper)}
+        </div>
       ) : null}
 
-      {loading ? <p className="muted">Loading assignments...</p> : (
+      {loading ? <p className="muted">Loading assignments...</p> : panel === "history" ? (
         <DataTable
           rows={rows}
-          empty={panel === "history" ? "No assignment history for this vehicle." : "No active assignments."}
+          empty="No assignment history for this vehicle."
           columns={[
             {
               key: "role",
               label: "Role",
-              render: (row) => String(row.assignment_role || "—").replaceAll("_", " "),
+              render: (row) => (
+                <span className={`role-pill ${String(row.assignment_role).toUpperCase() === "HELPER" ? "helper" : "driver"}`}>
+                  {String(row.assignment_role || "—").replaceAll("_", " ")}
+                </span>
+              ),
             },
             {
               key: "person",
@@ -630,12 +819,13 @@ function VehicleAssignmentsPanel({
             },
           ]}
         />
-      )}
+      ) : null}
 
       {modal ? (
         <Modal
           title={modal.initial ? `Edit ${modal.role === "HELPER" ? "helper" : "driver"} assignment` : `Assign ${modal.role === "HELPER" ? "helper" : "driver"}`}
           onClose={() => setModal(null)}
+          wide
         >
           <AssignmentForm
             role={modal.role}
@@ -880,9 +1070,26 @@ export default function Fleet() {
                 : { label: "Assign Driver", onClick: () => setModal("assign-driver") }
             }
             columns={[
-              { key: "vehicle", label: "Vehicle", render: (row) => row.vehicle_name },
-              { key: "role", label: "Role", render: (row) => row.role_label },
-              { key: "person", label: "Person", render: (row) => row.person_name },
+              { key: "vehicle", label: "Vehicle", render: (row) => <strong>{row.vehicle_name}</strong> },
+              {
+                key: "role",
+                label: "Role",
+                render: (row) => (
+                  <span className={`role-pill ${String(row.assignment_role).toUpperCase() === "HELPER" ? "helper" : "driver"}`}>
+                    {row.role_label}
+                  </span>
+                ),
+              },
+              {
+                key: "person",
+                label: "Person",
+                render: (row) => (
+                  <span className="person-cell">
+                    <span className="person-cell-avatar">{initials(row.person_name)}</span>
+                    {row.person_name}
+                  </span>
+                ),
+              },
               { key: "start", label: "Start", render: (row) => formatDate(row.start_date) },
               { key: "end", label: "End", render: (row) => formatDate(row.end_date) },
               { key: "active", label: "Status", render: (row) => <StatusPill value={row.is_active} active /> },
@@ -993,7 +1200,7 @@ export default function Fleet() {
         </Modal>
       ) : null}
       {modal === "assign-driver" && data ? (
-        <Modal title="Assign Driver" onClose={() => setModal("")}>
+        <Modal title="Assign Driver" onClose={() => setModal("")} wide>
           <AssignmentForm
             role="DRIVER"
             vehicles={data.vehicles}
@@ -1005,7 +1212,7 @@ export default function Fleet() {
         </Modal>
       ) : null}
       {modal === "assign-helper" && data ? (
-        <Modal title="Assign Helper" onClose={() => setModal("")}>
+        <Modal title="Assign Helper" onClose={() => setModal("")} wide>
           <AssignmentForm
             role="HELPER"
             vehicles={data.vehicles}
@@ -1020,6 +1227,7 @@ export default function Fleet() {
         <Modal
           title={`Edit ${String(editRow.assignment_role || "").toUpperCase() === "HELPER" ? "helper" : "driver"} assignment`}
           onClose={() => setEditRow(null)}
+          wide
         >
           <AssignmentForm
             role={String(editRow.assignment_role || "DRIVER").toUpperCase() === "HELPER" ? "HELPER" : "DRIVER"}
