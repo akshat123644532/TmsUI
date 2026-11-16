@@ -1095,6 +1095,60 @@ tr.row-hit td { background: rgba(240, 180, 41, 0.14); }
   background: rgba(45, 140, 90, 0.12);
 }
 
+.role-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card-2);
+}
+
+.role-filter-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.role-filter-btn:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.role-filter-btn.active {
+  color: var(--text);
+  background: var(--input);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.role-filter-btn.active.driver {
+  color: #ffd27a;
+  background: rgba(240, 180, 41, 0.16);
+}
+
+.role-filter-btn.active.helper {
+  color: #8dffbe;
+  background: rgba(61, 214, 140, 0.14);
+}
+
+[data-theme="light"] .role-filter-btn.active.driver {
+  color: #8a5a00;
+  background: rgba(197, 133, 18, 0.16);
+}
+
+[data-theme="light"] .role-filter-btn.active.helper {
+  color: #1b5c38;
+  background: rgba(45, 140, 90, 0.14);
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;

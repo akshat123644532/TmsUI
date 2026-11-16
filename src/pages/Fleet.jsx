@@ -1015,17 +1015,26 @@ export default function Fleet() {
                     { id: "history", label: "History" },
                   ]}
                 />
-                <Select
-                  value={roleFilter}
-                  onChange={(event) => {
-                    setRoleFilter(event.target.value);
-                    pager.setPage(1);
-                  }}
-                >
-                  <option value="ALL">All roles</option>
-                  <option value="DRIVER">Driver</option>
-                  <option value="HELPER">Helper</option>
-                </Select>
+                <div className="role-filter" role="group" aria-label="Filter by role">
+                  {[
+                    { id: "ALL", label: "All" },
+                    { id: "DRIVER", label: "Driver" },
+                    { id: "HELPER", label: "Helper" },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`role-filter-btn${roleFilter === option.id ? " active" : ""}${option.id !== "ALL" ? ` ${option.id.toLowerCase()}` : ""}`}
+                      aria-pressed={roleFilter === option.id}
+                      onClick={() => {
+                        setRoleFilter(option.id);
+                        pager.setPage(1);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </>
             ) : null}
             <SearchField value={query} onChange={(value) => { setQuery(value); pager.setPage(1); }} />
