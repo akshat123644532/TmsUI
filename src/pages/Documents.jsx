@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api, fetchAll, openApiFile } from "../api";
 import { endpoints } from "../api/endpoints";
+import { Icon } from "../components/Icons";
 import {
   Banner,
   DataTable,
@@ -45,6 +46,7 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const typeOptions = kind === "vehicle" ? VEHICLE_TYPES : PEOPLE_TYPES;
   const [form, setForm] = useState({
     owner_id: owners[0]?.id ? String(owners[0].id) : "",
@@ -57,6 +59,12 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
     setIssues((current) => ({ ...current, [key]: "" }));
+  };
+
+  const takeFile = (file) => {
+    if (!file) return;
+    setForm((current) => ({ ...current, file }));
+    setIssues((current) => ({ ...current, file: "" }));
   };
 
   const submit = async (event) => {
@@ -99,47 +107,102 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid" noValidate>
+    <form onSubmit={submit} className="doc-upload" noValidate>
+      <div className="doc-upload-head">
+        <span className="doc-upload-icon">
+          <Icon name="file" size={18} />
+        </span>
+        <div>
+          <strong>Upload {kind} document</strong>
+          <p>Pick owner and type, then drop the file below.</p>
+        </div>
+      </div>
+
       <FormLegend />
-      <Field label={kind === "vehicle" ? "Vehicle" : kind === "driver" ? "Driver" : "Helper"} required error={issues.owner_id}>
-        <Select value={form.owner_id} onChange={set("owner_id")}>
-          <option value="">Select</option>
-          {owners.map((owner) => (
-            <option key={owner.id} value={owner.id}>
-              {owner.registration_no || owner.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Document type" required error={issues.document_type}>
-        <Select value={form.document_type} onChange={set("document_type")}>
+
+      <div className="form-grid">
+        <Field label={kind === "vehicle" ? "Vehicle" : kind === "driver" ? "Driver" : "Helper"} required error={issues.owner_id}>
+          <Select value={form.owner_id} onChange={set("owner_id")}>
+            <option value="">Select</option>
+            {owners.map((owner) => (
+              <option key={owner.id} value={owner.id}>
+                {owner.registration_no || owner.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Document number" required error={issues.document_number}>
+          <input value={form.document_number} onChange={set("document_number")} placeholder="Number / ID" />
+        </Field>
+        <Field label="Issue date" required error={issues.issue_date}>
+          <input type="date" value={form.issue_date} onChange={set("issue_date")} />
+        </Field>
+        <Field label="Expiry date" required error={issues.expiry_date}>
+          <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
+        </Field>
+      </div>
+
+      <div className={`field${issues.document_type ? " invalid" : ""}`}>
+        <span className="field-label">Document type <span className="req">*</span></span>
+        <div className="chip-row" role="group" aria-label="Document type">
           {typeOptions.map((type) => (
-            <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
+            <button
+              key={type}
+              type="button"
+              className={`chip-btn${form.document_type === type ? " active" : ""}`}
+              onClick={() => {
+                setForm((current) => ({ ...current, document_type: type }));
+                setIssues((current) => ({ ...current, document_type: "" }));
+              }}
+            >
+              {type.replaceAll("_", " ")}
+            </button>
           ))}
-        </Select>
-      </Field>
-      <Field label="Document number" required error={issues.document_number}>
-        <input value={form.document_number} onChange={set("document_number")} />
-      </Field>
-      <Field label="Issue date" required error={issues.issue_date}>
-        <input type="date" value={form.issue_date} onChange={set("issue_date")} />
-      </Field>
-      <Field label="Expiry date" required error={issues.expiry_date}>
-        <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
-      </Field>
-      <Field label="File (PDF / JPG / PNG)" required error={issues.file}>
-        <input
-          type="file"
-          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
-          onChange={(event) => {
-            setForm((current) => ({ ...current, file: event.target.files?.[0] || null }));
-            setIssues((current) => ({ ...current, file: "" }));
+        </div>
+        {issues.document_type ? <small className="field-error">{issues.document_type}</small> : null}
+      </div>
+
+      <div className={`field${issues.file ? " invalid" : ""}`}>
+        <span className="field-label">File <span className="req">*</span></span>
+        <label
+          className={`dropzone${dragOver ? " drag" : ""}${issues.file ? " invalid" : ""}${form.file ? " has-file" : ""}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragOver(true);
           }}
-        />
-      </Field>
-      {form.file ? <p className="muted span-2">Selected: {form.file.name}</p> : null}
-      {error ? <p className="form-error span-2">{error}</p> : null}
-      <FormActions onCancel={onClose} busy={busy} submitLabel="Upload document" />
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragOver(false);
+            takeFile(event.dataTransfer.files?.[0] || null);
+          }}
+        >
+          <input
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+            hidden
+            onChange={(event) => takeFile(event.target.files?.[0] || null)}
+          />
+          <span className="dropzone-icon">
+            <Icon name="download" size={22} />
+          </span>
+          {form.file ? (
+            <>
+              <strong>{form.file.name}</strong>
+              <small>{Math.max(1, Math.round(form.file.size / 1024))} KB · click to replace</small>
+            </>
+          ) : (
+            <>
+              <strong>Drop file here or browse</strong>
+              <small>PDF, JPG, PNG, WEBP</small>
+            </>
+          )}
+        </label>
+        {issues.file ? <small className="field-error">{issues.file}</small> : null}
+      </div>
+
+      {error ? <p className="form-error">{error}</p> : null}
+      <FormActions onCancel={onClose} busy={busy} submitLabel={busy ? "Uploading..." : "Upload document"} />
     </form>
   );
 }
