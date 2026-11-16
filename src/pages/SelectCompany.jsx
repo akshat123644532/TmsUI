@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { endpoints } from "../api/endpoints";
 import { useAuth } from "../auth";
 import { Icon } from "../components/Icons";
 import { Field, FormActions, FormLegend } from "../components/ui";
-import { blankIssues, hasIssues, isSuperAdminRole } from "../lib";
+import { blankIssues, hasIssues, initials, isSuperAdminRole } from "../lib";
 import { useTheme } from "../theme";
 
 function CreateCompanyForm({ onCreated, onCancel }) {
@@ -60,31 +60,41 @@ function CreateCompanyForm({ onCreated, onCancel }) {
   };
 
   return (
-    <form onSubmit={submit} className="form-grid company-create-form" noValidate>
-      <FormLegend />
-      <Field label="Company name" required error={issues.name}>
-        <input value={form.name} onChange={set("name")} placeholder="Acme Logistics" autoFocus />
-      </Field>
-      <Field label="Admin name" required error={issues.admin_name}>
-        <input value={form.admin_name} onChange={set("admin_name")} placeholder="Company admin" />
-      </Field>
-      <Field label="Admin mobile" required error={issues.admin_mobile}>
-        <input value={form.admin_mobile} onChange={set("admin_mobile")} placeholder="10-digit mobile" />
-      </Field>
-      <Field label="Admin email" required error={issues.admin_email}>
-        <input type="email" value={form.admin_email} onChange={set("admin_email")} placeholder="admin@company.com" />
-      </Field>
-      <Field label="Admin password" required error={issues.admin_password} hint="Min 8 characters, letter + number">
-        <input type="password" value={form.admin_password} onChange={set("admin_password")} autoComplete="new-password" />
-      </Field>
-      {error ? <p className="form-error span-2">{error}</p> : null}
-      <div className="span-2">
-        <FormActions
-          busy={busy}
-          submitLabel={busy ? "Creating..." : "Create company"}
-          onCancel={onCancel}
-        />
+    <form onSubmit={submit} className="company-create-panel" noValidate>
+      <div className="company-create-banner">
+        <span className="company-create-icon">
+          <Icon name="crm" size={18} />
+        </span>
+        <div>
+          <strong>Create company</strong>
+          <p>Adds the company and its first company admin in one step.</p>
+        </div>
       </div>
+
+      <FormLegend />
+      <div className="form-grid">
+        <Field label="Company name" required error={issues.name}>
+          <input value={form.name} onChange={set("name")} placeholder="Acme Logistics" autoFocus />
+        </Field>
+        <Field label="Admin name" required error={issues.admin_name}>
+          <input value={form.admin_name} onChange={set("admin_name")} placeholder="Company admin" />
+        </Field>
+        <Field label="Admin mobile" required error={issues.admin_mobile}>
+          <input value={form.admin_mobile} onChange={set("admin_mobile")} placeholder="10-digit mobile" />
+        </Field>
+        <Field label="Admin email" required error={issues.admin_email}>
+          <input type="email" value={form.admin_email} onChange={set("admin_email")} placeholder="admin@company.com" />
+        </Field>
+        <Field label="Admin password" required error={issues.admin_password} hint="Min 8 characters, letter + number">
+          <input type="password" value={form.admin_password} onChange={set("admin_password")} autoComplete="new-password" />
+        </Field>
+      </div>
+      {error ? <p className="form-error">{error}</p> : null}
+      <FormActions
+        busy={busy}
+        submitLabel={busy ? "Creating..." : "Create company"}
+        onCancel={onCancel}
+      />
     </form>
   );
 }
@@ -98,7 +108,17 @@ export default function SelectCompany() {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [search, setSearch] = useState("");
+  const [activeId, setActiveId] = useState(null);
   const autoPicked = useRef(false);
+
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return companies;
+    return companies.filter((row) =>
+      [row.name, String(row.id)].join(" ").toLowerCase().includes(needle)
+    );
+  }, [companies, search]);
 
   const reload = () => {
     setBusy(true);
@@ -147,6 +167,7 @@ export default function SelectCompany() {
 
   const choose = async (row) => {
     setPicking(true);
+    setActiveId(row.id);
     setError("");
     try {
       await selectCompany({ id: row.id, name: row.name });
@@ -154,6 +175,7 @@ export default function SelectCompany() {
     } catch (err) {
       setError(err.message || "Could not open company desk");
       autoPicked.current = false;
+      setActiveId(null);
     } finally {
       setPicking(false);
     }
@@ -171,7 +193,7 @@ export default function SelectCompany() {
   if (!needsCompanySelection && company?.id) return <Navigate to="/" replace />;
 
   return (
-    <div className="login-screen">
+    <div className="login-screen company-select-screen">
       <div className="login-card-wrap">
         <div className="login-card company-pick-card">
           <div className="login-card-top">
@@ -205,17 +227,24 @@ export default function SelectCompany() {
             </div>
           </div>
 
-          <div className="login-card-head">
-            <h1>{creating ? "New company" : "Select company"}</h1>
-            <p className="page-sub">
-              {creating
-                ? "Create a company and its admin, then open the desk."
-                : "Choose which company desk you want to open."}
-            </p>
+          <div className="company-select-hero">
+            <span className="company-select-avatar">{initials(user?.name || "SA")}</span>
+            <div>
+              <p className="company-select-kicker">System administrator</p>
+              <h1>{creating ? "New company" : "Choose a company"}</h1>
+              <p className="page-sub">
+                {creating
+                  ? "Create a company and its admin, then open the desk."
+                  : `Welcome${user?.name ? `, ${user.name.split(" ")[0]}` : ""}. Open the desk for one active company.`}
+              </p>
+            </div>
           </div>
 
           {busy || picking ? (
-            <p className="muted">{picking ? "Opening company desk..." : "Loading companies..."}</p>
+            <div className="company-select-status">
+              <span className="company-select-spinner" aria-hidden="true" />
+              <p className="muted">{picking ? "Opening company desk..." : "Loading companies..."}</p>
+            </div>
           ) : null}
           {error ? <p className="form-error">{error}</p> : null}
 
@@ -237,44 +266,73 @@ export default function SelectCompany() {
 
           {!busy && !creating && !picking ? (
             <>
+              <div className="company-select-toolbar">
+                <div className="company-select-search">
+                  <Icon name="search" size={15} />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search companies"
+                    aria-label="Search companies"
+                  />
+                </div>
+                <span className="company-select-count">
+                  {filtered.length} of {companies.length}
+                </span>
+              </div>
+
               <div className="company-pick-list">
-                {companies.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    className="company-pick-item"
-                    onClick={() => choose(row)}
-                    disabled={picking}
-                  >
-                    <span className="company-pick-mark">
-                      <Icon name="crm" size={18} />
-                    </span>
-                    <span className="company-pick-copy">
-                      <strong>{row.name}</strong>
-                      <small>Company ID {row.id}</small>
-                    </span>
-                    <Icon name="check" size={16} />
-                  </button>
-                ))}
+                {filtered.map((row) => {
+                  const selected = String(activeId) === String(row.id);
+                  return (
+                    <button
+                      key={row.id}
+                      type="button"
+                      className={`company-pick-item${selected ? " active" : ""}`}
+                      onClick={() => choose(row)}
+                      disabled={picking}
+                    >
+                      <span className="company-pick-mark">{initials(row.name)}</span>
+                      <span className="company-pick-copy">
+                        <strong>{row.name}</strong>
+                        <small>ID {row.id} · Active</small>
+                      </span>
+                      <span className="company-pick-cta">
+                        Open desk
+                        <Icon name="check" size={14} />
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               {!companies.length ? (
-                <p className="muted">No active companies yet. Create one to continue.</p>
+                <p className="muted company-select-empty">No active companies yet. Create one to continue.</p>
+              ) : null}
+              {companies.length && !filtered.length ? (
+                <p className="muted company-select-empty">No companies match “{search.trim()}”.</p>
               ) : null}
 
-              <button
-                className="btn btn-primary login-submit"
-                type="button"
-                onClick={() => setCreating(true)}
-              >
-                New company
-              </button>
+              <div className="company-select-actions">
+                <button
+                  className="btn btn-primary login-submit"
+                  type="button"
+                  onClick={() => setCreating(true)}
+                >
+                  New company
+                </button>
+                <button className="btn btn-ghost login-submit" type="button" onClick={() => logout()}>
+                  Sign out
+                </button>
+              </div>
             </>
           ) : null}
 
-          <button className="btn btn-ghost login-submit" type="button" onClick={() => logout()}>
-            Sign out
-          </button>
+          {(busy || picking || creating) ? (
+            <button className="btn btn-ghost login-submit" type="button" onClick={() => logout()}>
+              Sign out
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
