@@ -20,8 +20,70 @@ import {
   Tabs,
   ViewButton,
 } from "../components/ui";
-import { blankIssues, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
+import { blankIssues, formatDate, hasIssues, includesQuery, usePaged, useResource, useSearchFocus } from "../lib";
 import { useToast } from "../toast";
+
+function StaffAssignmentHistory({ kind, personId }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    setError("");
+    const query =
+      kind === "driver"
+        ? `driver_id=${personId}`
+        : `helper_id=${personId}`;
+
+    api(`${endpoints.vehicleAssignmentHistory}?${query}&limit=100`)
+      .then((data) => {
+        if (!live) return;
+        setRows(data.history || data.assignments || []);
+      })
+      .catch((err) => {
+        if (!live) return;
+        setError(err.message || "Could not load assignment history");
+        setRows([]);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+
+    return () => {
+      live = false;
+    };
+  }, [kind, personId]);
+
+  return (
+    <div className="stack">
+      <h3 style={{ margin: "12px 0 0" }}>Assignment history</h3>
+      <Banner>{error}</Banner>
+      {loading ? <p className="muted">Loading history...</p> : (
+        <DataTable
+          rows={rows}
+          empty="No vehicle assignments for this person yet."
+          columns={[
+            {
+              key: "role",
+              label: "Role",
+              render: (row) => String(row.assignment_role || "—").replaceAll("_", " "),
+            },
+            { key: "vehicle", label: "Vehicle", render: (row) => row.vehicle_id || "—" },
+            { key: "start", label: "Start", render: (row) => formatDate(row.start_date) },
+            { key: "end", label: "End", render: (row) => formatDate(row.end_date) },
+            {
+              key: "status",
+              label: "Status",
+              render: (row) => <StatusPill value={row.is_active} active />,
+            },
+          ]}
+        />
+      )}
+    </div>
+  );
+}
 
 function PersonForm({ kind, onClose, onCreated }) {
   const [error, setError] = useState("");
@@ -213,13 +275,17 @@ export default function Staff() {
         <Pager page={pager.page} totalPages={pager.totalPages} rangeLabel={pager.rangeLabel} onPage={pager.setPage} />
       </article>
       {detail ? (
-        <Modal title={detail.name} onClose={() => setDetail(null)}>
+        <Modal title={detail.name} onClose={() => setDetail(null)} wide>
           <DetailList rows={[
             ["Mobile", detail.mobile],
             ["Email", detail.email],
             ["Address", detail.address],
             ["Status", Number(detail.status) === 1 ? "Active" : "Inactive"],
           ]} />
+          <StaffAssignmentHistory
+            kind={tab === "drivers" ? "driver" : "helper"}
+            personId={detail.id}
+          />
         </Modal>
       ) : null}
       {open ? (

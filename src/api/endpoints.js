@@ -27,6 +27,9 @@ export const endpoints = {
   vehicleType: (id) => `/api/vehicle-types/${id}`,
   vehicleAssignments: "/api/vehicle-assignments",
   vehicleAssignment: (id) => `/api/vehicle-assignments/${id}`,
+  vehicleAssignmentClose: (id) => `/api/vehicle-assignments/${id}/close`,
+  vehicleAssignmentHistory: "/api/vehicle-assignments/history",
+  vehicleTripHistory: (id) => `/api/vehicles/${id}/trip-history`,
 
   vehicleDocuments: "/api/vehicle-documents",
   vehicleDocument: (id) => `/api/vehicle-documents/${id}`,
