@@ -41,6 +41,7 @@ export const endpoints = {
 
   bilties: "/api/bilties",
   bilty: (id) => `/api/bilties/${id}`,
+  biltyPrint: (id) => `/api/bilties/${id}/print`,
   biltyReserve: "/api/bilties/reserve",
   biltyReserveRange: "/api/bilties/reserve-range",
   trips: "/api/trips",

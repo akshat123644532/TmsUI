@@ -50,9 +50,9 @@ export function Modal({ title, onClose, children, wide = false }) {
   );
 }
 
-export function Field({ label, error, required = false, hint, children }) {
+export function Field({ label, error, required = false, hint, className = "", children }) {
   return (
-    <label className={`field${error ? " invalid" : ""}${required ? " required" : ""}`}>
+    <label className={`field${error ? " invalid" : ""}${required ? " required" : ""}${className ? ` ${className}` : ""}`}>
       <span className="field-label">
         {label}
         {required ? <abbr className="req" title="Required">*</abbr> : null}

@@ -353,7 +353,7 @@ export default function Dashboard() {
       ) : null}
 
       {open ? (
-        <Modal title="New Bilty" onClose={() => setOpen(false)}>
+        <Modal title="New Bilty" onClose={() => setOpen(false)} wide>
           <ShipmentForm
             onClose={() => setOpen(false)}
             onCreated={() => {
