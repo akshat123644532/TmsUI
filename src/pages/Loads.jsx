@@ -39,12 +39,56 @@ const STATUSES = BILTY_STATUSES;
 const CREATE_STATUSES = ["RESERVED", "DRAFT", "CONFIRMED"];
 const MAX_RANGE = 100;
 
-const COPY_TYPES = ["CONSIGNOR", "CONSIGNEE", "DRIVER", "OFFICE"];
+const COPY_TYPES = ["CONSIGNOR", "CONSIGNEE", "DRIVER", "TRANSPORT"];
 const PAYMENT_MODES = ["TO_PAY", "PAID", "TO_BE_BILLED"];
 const GST_PAYERS = ["CONSIGNOR", "CONSIGNEE", "TRANSPORT_OPERATOR"];
 const DELIVERY_TYPES = ["DOOR_DELIVERY", "GODOWN"];
 const INSURANCE_AT_RISK = ["CARRIER", "OWNER"];
 const CHARGE_TYPES = ["FREIGHT", "LABOUR", "SURCHARGE", "ST_CHARGE", "RISK_CHARGE", "GR_CHARGE", "OTHER"];
+
+const DEFAULT_COPY_SETTINGS = [
+  { copy_type: "CONSIGNOR", label: "Consignor Copy", color_hex: "#FFFFFF", color_name: "White", sort_order: 1 },
+  { copy_type: "CONSIGNEE", label: "Consignee Copy", color_hex: "#F8C8DC", color_name: "Pink", sort_order: 2 },
+  { copy_type: "DRIVER", label: "Driver Copy", color_hex: "#FFF59D", color_name: "Yellow", sort_order: 3 },
+  { copy_type: "TRANSPORT", label: "Transport Copy", color_hex: "#C8E6C9", color_name: "Green", sort_order: 4 },
+];
+
+function normalizeCopySettings(raw) {
+  const rows = raw?.copies || raw?.settings || (Array.isArray(raw) ? raw : null) || DEFAULT_COPY_SETTINGS;
+  return [...rows]
+    .map((row, index) => ({
+      copy_type: row.copy_type || COPY_TYPES[index] || `COPY_${index + 1}`,
+      label: row.label || `${prettyLabel(row.copy_type || COPY_TYPES[index])} Copy`,
+      color_hex: normalizeHex(row.color_hex) || DEFAULT_COPY_SETTINGS[index]?.color_hex || "#FFFFFF",
+      color_name: row.color_name || "Custom",
+      sort_order: Number(row.sort_order) || index + 1,
+    }))
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+function normalizeHex(value) {
+  const raw = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+  if (/^[0-9a-fA-F]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+  return "";
+}
+
+function prettyLabel(value) {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function extractBilty(data, fallback = {}) {
+  const bilty = data?.bilty || data?.data || data;
+  if (!bilty || typeof bilty !== "object") return fallback;
+  return {
+    ...fallback,
+    ...bilty,
+    id: bilty.id || data?.id || fallback.id,
+    charges: data?.charges || bilty.charges || fallback.charges,
+  };
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -293,12 +337,11 @@ export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = nul
     setError("");
     try {
       const body = buildPayload(form);
-      if (editing) {
-        await api(endpoints.bilty(biltyId), { method: "PUT", body });
-      } else {
-        await api(endpoints.bilties, { method: "POST", body });
-      }
-      onCreated?.(editing ? "Bilty updated" : "Bilty created");
+      const data = editing
+        ? await api(endpoints.bilty(biltyId), { method: "PUT", body })
+        : await api(endpoints.bilties, { method: "POST", body });
+      const bilty = extractBilty(data, { ...body, id: biltyId });
+      onCreated?.(editing ? "Bilty updated" : "Bilty created", bilty);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -613,6 +656,7 @@ function sectionEntries(section) {
     });
   }
   return Object.entries(section).map(([key, value]) => {
+    if (key === "charges") return null;
     if (value && typeof value === "object" && !Array.isArray(value)) {
       return [key, Object.entries(value).map(([k, v]) => `${k}: ${v ?? "—"}`).join(" · ")];
     }
@@ -620,107 +664,365 @@ function sectionEntries(section) {
       return [key, value.map((item) => (typeof item === "object" ? JSON.stringify(item) : item)).join(", ")];
     }
     return [key, value];
-  });
+  }).filter(Boolean);
 }
 
 function prettyKey(key) {
-  return String(key || "")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  return prettyLabel(key);
 }
 
-function PrintView({ print, bilty, onClose }) {
-  const sections = print?.sections || {};
-  const order = [
-    ["header", "Header"],
-    ["party_route", "Party & Route"],
-    ["goods", "Goods"],
-    ["freight", "Freight / Charges"],
-    ["insurance_terms", "Insurance / Terms"],
-  ];
-  const title = bilty?.bilty_number || print?.bilty?.bilty_number || "Bilty";
+const SECTION_ORDER = [
+  ["header", "Header"],
+  ["party_route", "Party & Route"],
+  ["goods", "Goods"],
+  ["freight", "Freight / Charges"],
+  ["insurance_terms", "Insurance / Terms"],
+];
+
+function BiltyPrintPage({ page, bilty }) {
+  const sections = page?.sections || {};
+  const color = normalizeHex(page?.color_hex) || "#FFFFFF";
+  const biltyNo = bilty?.bilty_number || sections.header?.bilty_number || "Bilty";
+
+  return (
+    <article
+      className={`bilty-print-sheet bilty-print-page${page?.page_break_after ? " break-after" : ""}`}
+      style={{
+        "--copy-color": color,
+        borderColor: color,
+        background: `linear-gradient(${color} 0%, ${color} 48px, #ffffff 160px)`,
+      }}
+    >
+      <div className="bilty-print-copy-banner" style={{ background: color, borderColor: color }}>
+        <strong className="bilty-print-copy-title">{page?.title || prettyLabel(page?.copy_type)}</strong>
+        <span className="bilty-print-copy-sub">
+          {page?.color_name || color} · {page?.copy_type}
+        </span>
+      </div>
+
+      <header className="bilty-print-banner">
+        <div>
+          <p className="bilty-print-kicker">Lorry receipt / bilty</p>
+          <h1>{biltyNo}</h1>
+        </div>
+        <div className="bilty-print-meta">
+          <span>{formatDate(bilty?.bilty_date || sections.header?.bilty_date)}</span>
+          {bilty?.status ? <StatusPill value={bilty.status} /> : null}
+        </div>
+      </header>
+
+      {SECTION_ORDER.map(([key, label]) => {
+        const block = sections[key];
+        const entries = sectionEntries(block);
+        const chargeRows = key === "freight"
+          ? (Array.isArray(block?.charges) ? block.charges : Array.isArray(block) ? block : [])
+          : [];
+        if (!entries.length && !chargeRows.length && !block) return null;
+        return (
+          <section key={key} className="bilty-print-section" style={{ borderTopColor: color }}>
+            <h2 style={{ color: "#222", borderBottomColor: color }}>{label}</h2>
+            {chargeRows.length ? (
+              <table className="bilty-print-table">
+                <thead>
+                  <tr>
+                    <th>Charge</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chargeRows.map((row, index) => (
+                    <tr key={index}>
+                      <td>{prettyKey(row.charge_type || row.label || `Charge ${index + 1}`)}</td>
+                      <td>{money(row.amount ?? row.value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <dl className="bilty-print-grid">
+                {entries.map(([entryKey, value]) => (
+                  <div key={String(entryKey)}>
+                    <dt>{prettyKey(entryKey)}</dt>
+                    <dd>{value === null || value === undefined || value === "" ? "—" : String(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {key === "freight" && (block?.total_amount != null || bilty?.total_amount != null) ? (
+              <p className="bilty-print-total">Total · {money(block?.total_amount ?? bilty?.total_amount)}</p>
+            ) : null}
+          </section>
+        );
+      })}
+
+      <footer className="bilty-print-sign">
+        <div><span>Consignor</span><em /></div>
+        <div><span>Driver</span><em /></div>
+        <div><span>Authorised signatory</span><em /></div>
+      </footer>
+    </article>
+  );
+}
+
+function CopySettingsForm({ copies, onClose, onSaved }) {
+  const [rows, setRows] = useState(() => normalizeCopySettings({ copies }));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const setRow = (index, key, value) => {
+    setRows((current) => current.map((row, i) => {
+      if (i !== index) return row;
+      const next = { ...row, [key]: value };
+      if (key === "color_hex") next.color_hex = normalizeHex(value) || value;
+      return next;
+    }));
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const payload = {
+        copies: rows.map((row, index) => ({
+          copy_type: row.copy_type,
+          label: row.label.trim() || `${prettyLabel(row.copy_type)} Copy`,
+          color_hex: normalizeHex(row.color_hex) || "#FFFFFF",
+          color_name: row.color_name.trim() || "Custom",
+          sort_order: Number(row.sort_order) || index + 1,
+        })),
+      };
+      const data = await api(endpoints.biltyCopySettings, { method: "PUT", body: payload });
+      onSaved(normalizeCopySettings(data.copies ? data : payload));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="bilty-copy-settings" noValidate>
+      <p className="muted">Confirm final colours with sir — these defaults are fine until then.</p>
+      {rows.map((row, index) => (
+        <div className="bilty-copy-settings-row" key={row.copy_type}>
+          <div className="bilty-copy-swatch" style={{ background: normalizeHex(row.color_hex) || "#fff" }} />
+          <Field label="Copy">
+            <input value={row.label} onChange={(event) => setRow(index, "label", event.target.value)} />
+          </Field>
+          <Field label="Color name">
+            <input value={row.color_name} onChange={(event) => setRow(index, "color_name", event.target.value)} />
+          </Field>
+          <Field label="Picker">
+            <input
+              type="color"
+              value={normalizeHex(row.color_hex) || "#FFFFFF"}
+              onChange={(event) => setRow(index, "color_hex", event.target.value)}
+            />
+          </Field>
+          <Field label="Hex">
+            <input
+              value={row.color_hex}
+              onChange={(event) => setRow(index, "color_hex", event.target.value)}
+              placeholder="#FFFFFF"
+            />
+          </Field>
+        </div>
+      ))}
+      {error ? <p className="form-error">{error}</p> : null}
+      <FormActions onCancel={onClose} busy={busy} submitLabel="Save colours" />
+    </form>
+  );
+}
+
+function PrintScreen({ bilty, onClose }) {
+  const biltyId = bilty?.id;
+  const [copies, setCopies] = useState(DEFAULT_COPY_SETTINGS);
+  const [selected, setSelected] = useState(() => new Set(COPY_TYPES));
+  const [print, setPrint] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setLoadingSettings(true);
+    api(endpoints.biltyCopySettings)
+      .then((data) => {
+        if (!alive) return;
+        const next = normalizeCopySettings(data);
+        setCopies(next);
+        setSelected(new Set(next.map((row) => row.copy_type)));
+      })
+      .catch(() => {
+        if (!alive) return;
+        setCopies(DEFAULT_COPY_SETTINGS);
+        setSelected(new Set(COPY_TYPES));
+      })
+      .finally(() => alive && setLoadingSettings(false));
+    return () => { alive = false; };
+  }, []);
+
+  const selectedList = copies
+    .filter((row) => selected.has(row.copy_type))
+    .map((row) => row.copy_type);
+
+  const allSelected = copies.length > 0 && selectedList.length === copies.length;
+
+  const toggleCopy = (copyType) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(copyType)) next.delete(copyType);
+      else next.add(copyType);
+      return next;
+    });
+    setPrint(null);
+  };
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(copies.map((row) => row.copy_type)));
+    setPrint(null);
+  };
+
+  const loadPreview = async () => {
+    if (!biltyId) {
+      setError("Missing bilty id");
+      return null;
+    }
+    if (!selectedList.length) {
+      setError("Select at least one copy");
+      return null;
+    }
+    setLoadingPreview(true);
+    setError("");
+    try {
+      const data = await api(endpoints.biltyPrint(biltyId), {
+        method: "POST",
+        body: { copies: selectedList },
+      });
+      const nextPrint = data.print || data;
+      setPrint(nextPrint);
+      return nextPrint;
+    } catch (err) {
+      // Fallback to GET ?copies= for backends that only expose query print.
+      try {
+        const query = selectedList.length === copies.length ? "ALL" : selectedList.join(",");
+        const data = await api(`${endpoints.biltyPrint(biltyId)}?copies=${encodeURIComponent(query)}`);
+        const nextPrint = data.print || data;
+        setPrint(nextPrint);
+        return nextPrint;
+      } catch {
+        setError(err.message);
+        return null;
+      }
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    const ready = print?.pages?.length ? print : await loadPreview();
+    if (!ready?.pages?.length) return;
+    window.setTimeout(() => window.print(), 50);
+  };
+
+  const pages = print?.pages || [];
+  const title = bilty?.bilty_number || "Bilty";
 
   return (
     <div className="bilty-print">
       <div className="bilty-print-toolbar no-print">
         <div>
-          <strong>{title}</strong>
-          <p className="muted">Print-friendly LR layout from API sections</p>
+          <strong>Print · {title}</strong>
+          <p className="muted">One saved bilty · choose coloured copies · browser print</p>
         </div>
         <div className="page-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => setSettingsOpen(true)}>
+            Copy colours
+          </button>
           <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
-          <button type="button" className="btn btn-primary" onClick={() => window.print()}>Print</button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={loadingPreview || !selectedList.length}
+            onClick={loadPreview}
+          >
+            {loadingPreview ? "Loading..." : "Preview"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={loadingPreview || !selectedList.length}
+            onClick={handlePrint}
+          >
+            Print
+          </button>
         </div>
       </div>
 
-      <article className="bilty-print-sheet">
-        <header className="bilty-print-banner">
-          <div>
-            <p className="bilty-print-kicker">Lorry receipt / bilty</p>
-            <h1>{title}</h1>
-          </div>
-          <div className="bilty-print-meta">
-            <span>{bilty?.copy_type || "—"}</span>
-            <span>{formatDate(bilty?.bilty_date)}</span>
-            <StatusPill value={bilty?.status} />
-          </div>
-        </header>
+      <div className="bilty-copy-picker no-print">
+        <label className="bilty-copy-check all">
+          <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={loadingSettings} />
+          <span>Select All</span>
+        </label>
+        {copies.map((row) => (
+          <label className="bilty-copy-check" key={row.copy_type}>
+            <input
+              type="checkbox"
+              checked={selected.has(row.copy_type)}
+              onChange={() => toggleCopy(row.copy_type)}
+              disabled={loadingSettings}
+            />
+            <span className="bilty-copy-dot" style={{ background: row.color_hex }} />
+            <span>
+              {row.label}
+              <small>{row.color_name}</small>
+            </span>
+          </label>
+        ))}
+      </div>
 
-        {order.map(([key, label]) => {
-          const entries = sectionEntries(sections[key]);
-          if (!entries.length && !sections[key]) return null;
-          return (
-            <section key={key} className="bilty-print-section">
-              <h2>{label}</h2>
-              {key === "freight" && Array.isArray(sections.freight?.charges || sections.freight) ? (
-                <table className="bilty-print-table">
-                  <thead>
-                    <tr>
-                      <th>Charge</th>
-                      <th>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(sections.freight?.charges || sections.freight || []).map((row, index) => (
-                      <tr key={index}>
-                        <td>{prettyKey(row.charge_type || row.label || `Charge ${index + 1}`)}</td>
-                        <td>{money(row.amount ?? row.value)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <dl className="bilty-print-grid">
-                  {entries.map(([entryKey, value]) => (
-                    <div key={String(entryKey)}>
-                      <dt>{prettyKey(entryKey)}</dt>
-                      <dd>{value === null || value === undefined || value === "" ? "—" : String(value)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-              {key === "freight" && (sections.freight?.total_amount != null || bilty?.total_amount != null) ? (
-                <p className="bilty-print-total">Total · {money(sections.freight?.total_amount ?? bilty?.total_amount)}</p>
-              ) : null}
-            </section>
-          );
-        })}
+      {error ? <Banner>{error}</Banner> : null}
 
-        <footer className="bilty-print-sign">
-          <div>
-            <span>Consignor</span>
-            <em />
+      {pages.length ? (
+        <div className="bilty-print-pages">
+          <p className="muted no-print">{print.page_count || pages.length} page(s) ready</p>
+          {pages.map((page) => (
+            <BiltyPrintPage key={`${page.copy_type}-${page.page}`} page={page} bilty={bilty} />
+          ))}
+        </div>
+      ) : (
+        <p className="muted no-print pad">
+          Select one or more copies, then Preview or Print. Same bilty id — no extra records.
+        </p>
+      )}
+
+      {settingsOpen ? (
+        <div className="bilty-copy-settings-panel no-print">
+          <div className="panel-section-head">
+            <div>
+              <h3>Copy colours</h3>
+              <p className="muted">Saved once for the company · used on every bilty print</p>
+            </div>
+            <button type="button" className="btn btn-ghost" onClick={() => setSettingsOpen(false)}>Hide</button>
           </div>
-          <div>
-            <span>Driver</span>
-            <em />
-          </div>
-          <div>
-            <span>Authorised signatory</span>
-            <em />
-          </div>
-        </footer>
-      </article>
+          <CopySettingsForm
+            copies={copies}
+            onClose={() => setSettingsOpen(false)}
+            onSaved={(next) => {
+              setCopies(next);
+              setSelected((current) => {
+                const allowed = new Set(next.map((row) => row.copy_type));
+                const kept = [...current].filter((type) => allowed.has(type));
+                return new Set(kept.length ? kept : next.map((row) => row.copy_type));
+              });
+              setPrint(null);
+              setSettingsOpen(false);
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -786,7 +1088,7 @@ export default function Loads() {
   const [status, setStatus] = useState("");
   const [detail, setDetail] = useState(null);
   const [editRow, setEditRow] = useState(null);
-  const [printData, setPrintData] = useState(null);
+  const [printBilty, setPrintBilty] = useState(null);
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -878,27 +1180,28 @@ export default function Loads() {
     }
   };
 
-  const openPrint = async (row) => {
-    setBusy(true);
+  const openPrint = (row) => {
     setActionError("");
-    try {
-      const data = await api(endpoints.biltyPrint(row.id));
-      setPrintData({
-        print: data.print || data,
-        bilty: data.print?.bilty || data.bilty || row,
-      });
-      setDetail(null);
-    } catch (err) {
-      setActionError(err.message);
-      toast(err.message);
-    } finally {
-      setBusy(false);
-    }
+    setDetail(null);
+    setPrintBilty(row);
   };
+
+  const afterSave = (message, bilty) => {
+    toast(message);
+    reload();
+    if (bilty?.id) setPrintBilty(extractBilty({ bilty }, bilty));
+  };
+
+  useEffect(() => {
+    const printId = params.get("print");
+    if (!printId || !data?.rows) return;
+    const row = data.rows.find((item) => String(item.id) === String(printId));
+    if (row) setPrintBilty(row);
+  }, [params, data]);
 
   return (
     <section>
-      <PageHeader title="Bilty" subtitle="Physical LR layout — header, party & route, goods, freight, insurance / terms.">
+      <PageHeader title="Bilty" subtitle="Save once, then print coloured Consignor / Consignee / Driver / Transport copies.">
         <button className="btn btn-ghost" type="button" onClick={() => setReserveOpen(true)}>
           Reserve
         </button>
@@ -968,13 +1271,9 @@ export default function Loads() {
         </Modal>
       ) : null}
 
-      {printData ? (
-        <Modal title={`Print · ${printData.bilty?.bilty_number || "Bilty"}`} onClose={() => setPrintData(null)} wide>
-          <PrintView
-            print={printData.print}
-            bilty={printData.bilty}
-            onClose={() => setPrintData(null)}
-          />
+      {printBilty ? (
+        <Modal title={`Print · ${printBilty.bilty_number || "Bilty"}`} onClose={() => setPrintBilty(null)} wide>
+          <PrintScreen bilty={printBilty} onClose={() => setPrintBilty(null)} />
         </Modal>
       ) : null}
 
@@ -995,10 +1294,9 @@ export default function Loads() {
         <Modal title="New Bilty" onClose={() => setOpen(false)} wide>
           <ShipmentForm
             onClose={() => setOpen(false)}
-            onCreated={() => {
+            onCreated={(message, bilty) => {
               setOpen(false);
-              toast("Bilty created");
-              reload();
+              afterSave(message || "Bilty created", bilty);
             }}
           />
         </Modal>
@@ -1010,10 +1308,9 @@ export default function Loads() {
             biltyId={editRow.id}
             initial={editRow}
             onClose={() => setEditRow(null)}
-            onCreated={(message) => {
+            onCreated={(message, bilty) => {
               setEditRow(null);
-              toast(message || "Bilty updated");
-              reload();
+              afterSave(message || "Bilty updated", bilty);
             }}
           />
         </Modal>

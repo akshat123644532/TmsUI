@@ -356,10 +356,11 @@ export default function Dashboard() {
         <Modal title="New Bilty" onClose={() => setOpen(false)} wide>
           <ShipmentForm
             onClose={() => setOpen(false)}
-            onCreated={() => {
+            onCreated={(message, bilty) => {
               setOpen(false);
-              toast("Bilty created");
+              toast(message || "Bilty created");
               reload();
+              if (bilty?.id) navigate(`/loads?print=${bilty.id}`);
             }}
           />
         </Modal>

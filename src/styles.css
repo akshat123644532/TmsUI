@@ -1976,10 +1976,111 @@ td .pill {
   gap: 12px;
   align-items: flex-start;
   margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
 .bilty-print-toolbar .muted {
   margin: 4px 0 0;
+}
+
+.bilty-copy-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card-2, rgba(255, 255, 255, 0.02));
+}
+
+.bilty-copy-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--input, transparent);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.bilty-copy-check.all {
+  background: rgba(240, 180, 41, 0.1);
+  border-color: rgba(240, 180, 41, 0.28);
+}
+
+.bilty-copy-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--gold);
+}
+
+.bilty-copy-check span {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.bilty-copy-check small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.bilty-copy-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  flex: 0 0 auto;
+}
+
+.bilty-copy-settings-panel {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card-2, rgba(255, 255, 255, 0.02));
+}
+
+.bilty-copy-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bilty-copy-settings-row {
+  display: grid;
+  grid-template-columns: 28px 1.4fr 1fr 72px 110px;
+  gap: 10px;
+  align-items: end;
+}
+
+.bilty-copy-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  margin-bottom: 8px;
+}
+
+.bilty-copy-settings-row input[type="color"] {
+  width: 100%;
+  height: 40px;
+  padding: 2px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+}
+
+.bilty-print-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .bilty-print-sheet {
@@ -1987,7 +2088,41 @@ td .pill {
   color: #1a1a1a;
   border-radius: 12px;
   padding: 18px;
-  border: 1px solid #d7d7d7;
+  border: 2px solid #d7d7d7;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.bilty-print-copy-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -18px -18px 14px;
+  padding: 16px 18px;
+  border-bottom: 3px solid #222;
+  border-radius: 10px 10px 0 0;
+}
+
+.bilty-print-copy-title {
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  color: #111;
+  font-weight: 800;
+}
+
+.bilty-print-copy-sub {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #333;
+  opacity: 0.8;
+}
+
+.bilty-print-page.break-after {
+  break-after: page;
+  page-break-after: always;
 }
 
 .bilty-print-banner {
@@ -2452,6 +2587,9 @@ td .pill {
   .bilty-charge-row {
     grid-template-columns: 1fr;
   }
+  .bilty-copy-settings-row {
+    grid-template-columns: 28px 1fr;
+  }
   .bilty-print-grid,
   .bilty-print-sign {
     grid-template-columns: 1fr;
@@ -2476,12 +2614,18 @@ td .pill {
     color: #000;
   }
   .no-print,
-  .modal-backdrop,
   .modal-head,
   .sidebar,
   .topbar,
   .footer,
   .scrim { display: none !important; }
+  .modal-backdrop {
+    position: static;
+    inset: auto;
+    display: block;
+    background: #fff;
+    padding: 0;
+  }
   .modal {
     position: static;
     width: 100%;
@@ -2493,8 +2637,19 @@ td .pill {
     background: #fff;
   }
   .bilty-print-sheet {
-    border: 0;
+    box-shadow: none;
     border-radius: 0;
-    padding: 0;
+    padding: 12mm;
+    margin: 0;
+  }
+  .bilty-print-copy-banner {
+    margin: -12mm -12mm 8mm;
+    border-radius: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .bilty-print-page.break-after {
+    break-after: page;
+    page-break-after: always;
   }
 }
