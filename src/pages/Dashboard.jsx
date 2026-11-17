@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchAll } from "../api";
+import { useAuth } from "../auth";
 import { RevenueChart, StatusDonut, statusColor } from "../components/Charts";
 import { Icon } from "../components/Icons";
 import { Banner, EmptyState, KpiCard, Modal, PageHeader, StatusPill } from "../components/ui";
@@ -25,9 +26,25 @@ function sameDay(value, now = new Date()) {
     && date.getDate() === now.getDate();
 }
 
+function MiniRow({ icon, title, meta, status, onClick }) {
+  return (
+    <button type="button" className="mini-row dash-mini-row" onClick={onClick}>
+      <span className="dash-mini-icon">
+        <Icon name={icon} size={15} />
+      </span>
+      <span className="dash-mini-copy">
+        <strong>{title}</strong>
+        <small>{meta}</small>
+      </span>
+      <StatusPill value={status} />
+    </button>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user, company } = useAuth();
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState("6m");
   const { data, loading, error, reload } = useResource(async () => {
@@ -39,6 +56,16 @@ export default function Dashboard() {
     ]);
     return { bilties, trips, invoices, clients };
   }, []);
+
+  const todayLabel = useMemo(
+    () => new Date().toLocaleDateString("en-IN", {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }),
+    []
+  );
 
   const stats = useMemo(() => {
     const bilties = data?.bilties.rows || [];
@@ -137,9 +164,12 @@ export default function Dashboard() {
     ]);
   };
 
+  const firstName = (user?.name || "there").split(" ")[0];
+  const companyLabel = company?.name || user?.company_name || "your company";
+
   return (
-    <section>
-      <PageHeader title="Executive Overview" subtitle="Real-time performance metrics for your transport operation.">
+    <section className="dashboard-page">
+      <PageHeader title="Dashboard" subtitle="Live operations snapshot for your transport desk.">
         <button className="btn btn-ghost" type="button" onClick={exportReport} disabled={loading || !data}>
           <Icon name="download" size={16} />
           Download Report
@@ -151,28 +181,65 @@ export default function Dashboard() {
 
       <Banner>{error}</Banner>
 
+      <div className="dash-hero">
+        <div className="dash-hero-copy">
+          <p className="dash-hero-kicker">{todayLabel}</p>
+          <h2>Good day, {firstName}</h2>
+          <p>Here’s how <strong>{companyLabel}</strong> is moving today — trips, bilties, and collections.</p>
+        </div>
+        <div className="dash-quick">
+          <button type="button" className="dash-quick-btn" onClick={() => setOpen(true)}>
+            <Icon name="box" size={16} />
+            New bilty
+          </button>
+          <button type="button" className="dash-quick-btn" onClick={() => navigate("/routes")}>
+            <Icon name="pin" size={16} />
+            Trips
+          </button>
+          <button type="button" className="dash-quick-btn" onClick={() => navigate("/fleet")}>
+            <Icon name="truck" size={16} />
+            Fleet
+          </button>
+          <button type="button" className="dash-quick-btn" onClick={() => navigate("/invoices")}>
+            <Icon name="invoice" size={16} />
+            Invoices
+          </button>
+        </div>
+      </div>
+
       <div className="kpi-grid">
         {loading
           ? [0, 1, 2, 3].map((item) => <div key={item} className="card kpi skeleton" />)
           : (
             <>
-              <KpiCard icon="box" label="Total Bilties" value={stats.shipments} trend={stats.trends.shipments} />
-              <KpiCard icon="check" label="Delivered" value={stats.delivered} trend={stats.trends.delivered} />
-              <KpiCard icon="clock" label="Pending" value={stats.pending} trend={stats.trends.pending} />
-              <KpiCard icon="rupee" label="Total Revenue" value={money(stats.revenue)} trend={stats.trends.revenue} />
+              <KpiCard tone="bilty" icon="box" label="Total Bilties" value={stats.shipments} trend={stats.trends.shipments} />
+              <KpiCard tone="delivered" icon="check" label="Delivered" value={stats.delivered} trend={stats.trends.delivered} />
+              <KpiCard tone="pending" icon="clock" label="Pending" value={stats.pending} trend={stats.trends.pending} />
+              <KpiCard tone="revenue" icon="rupee" label="Total Revenue" value={money(stats.revenue)} trend={stats.trends.revenue} />
             </>
           )}
       </div>
 
       <div className="chart-grid">
-        <article className="card chart-card">
+        <article className="card chart-card dash-chart-card">
           <div className="card-head">
-            <h2>Revenue & Bilty Volume</h2>
-            <div className="range-toggle" role="group" aria-label="Chart range">
-              <button type="button" className={range === "month" ? "active" : ""} onClick={() => setRange("month")}>
+            <div>
+              <h2>Revenue & bilty volume</h2>
+              <p className="card-sub">Track collections against shipment volume</p>
+            </div>
+            <div className="role-filter" role="group" aria-label="Chart range">
+              <button
+                type="button"
+                className={`role-filter-btn${range === "month" ? " active" : ""}`}
+                onClick={() => setRange("month")}
+              >
                 This month
               </button>
-              <button type="button" className={range === "6m" ? "active" : ""} onClick={() => setRange("6m")}>
+              <button
+                type="button"
+                className={`role-filter-btn${range === "6m" ? " active" : ""}`}
+                onClick={() => setRange("6m")}
+              >
                 Last 6 months
               </button>
             </div>
@@ -183,86 +250,101 @@ export default function Dashboard() {
           </div>
           <RevenueChart points={stats.points} />
         </article>
-        <article className="card chart-card">
+        <article className="card chart-card dash-chart-card">
           <div className="card-head">
-            <h2>Trip Status Distribution</h2>
+            <div>
+              <h2>Trip status</h2>
+              <p className="card-sub">Distribution for the selected range</p>
+            </div>
           </div>
           <StatusDonut segments={stats.segments} />
-          <button className="text-link" type="button" onClick={() => navigate("/outlook")}>
-            Open carrier outlook
+          <button className="text-link" type="button" onClick={() => navigate("/routes?tab=board")}>
+            Open trip board
           </button>
         </article>
       </div>
 
       {!loading ? (
         <div className="list-grid">
-          <article className="card table-card">
-            <div className="card-head"><h2>Recent bilties</h2></div>
+          <article className="card table-card dash-panel">
+            <div className="card-head">
+              <div>
+                <h2>Recent bilties</h2>
+                <p className="card-sub">Latest consignments</p>
+              </div>
+              <button className="btn btn-ghost table-action" type="button" onClick={() => navigate("/loads")}>
+                View all
+              </button>
+            </div>
             {stats.recent.length === 0 ? (
               <EmptyState title="No bilties yet." actionLabel="New Bilty" onAction={() => setOpen(true)} />
             ) : (
               <div className="mini-list">
                 {stats.recent.map((row) => (
-                  <button
+                  <MiniRow
                     key={row.id}
-                    type="button"
-                    className="mini-row"
+                    icon="box"
+                    title={row.bilty_number}
+                    meta={`${row.client_name} · ${formatDate(row.created_at)}`}
+                    status={row.status}
                     onClick={() => navigate(`/loads?q=${encodeURIComponent(row.bilty_number || "")}&focus=${row.id}`)}
-                  >
-                    <span>
-                      <strong>{row.bilty_number}</strong>
-                      <small>{row.client_name} · {formatDate(row.created_at)}</small>
-                    </span>
-                    <StatusPill value={row.status} />
-                  </button>
+                  />
                 ))}
               </div>
             )}
           </article>
 
-          <article className="card table-card">
-            <div className="card-head"><h2>Today's trips</h2></div>
+          <article className="card table-card dash-panel">
+            <div className="card-head">
+              <div>
+                <h2>Today’s trips</h2>
+                <p className="card-sub">On the road today</p>
+              </div>
+              <button className="btn btn-ghost table-action" type="button" onClick={() => navigate("/routes")}>
+                View all
+              </button>
+            </div>
             {stats.todayTrips.length === 0 ? (
               <EmptyState title="No trips scheduled today." actionLabel="Plan a trip" onAction={() => navigate("/routes")} />
             ) : (
               <div className="mini-list">
                 {stats.todayTrips.map((trip) => (
-                  <button
+                  <MiniRow
                     key={trip.id}
-                    type="button"
-                    className="mini-row"
+                    icon="pin"
+                    title={`${trip.source || "—"} → ${trip.destination || "—"}`}
+                    meta={formatDate(trip.start_date || trip.created_at)}
+                    status={trip.status}
                     onClick={() => navigate(`/routes?q=${encodeURIComponent(`${trip.source || ""} ${trip.destination || ""}`.trim())}&focus=${trip.id}`)}
-                  >
-                    <span>
-                      <strong>{trip.source} → {trip.destination}</strong>
-                      <small>{formatDate(trip.start_date || trip.created_at)}</small>
-                    </span>
-                    <StatusPill value={trip.status} />
-                  </button>
+                  />
                 ))}
               </div>
             )}
           </article>
 
-          <article className="card table-card">
-            <div className="card-head"><h2>Unpaid invoices</h2></div>
+          <article className="card table-card dash-panel">
+            <div className="card-head">
+              <div>
+                <h2>Unpaid invoices</h2>
+                <p className="card-sub">Outstanding collections</p>
+              </div>
+              <button className="btn btn-ghost table-action" type="button" onClick={() => navigate("/invoices")}>
+                View all
+              </button>
+            </div>
             {stats.unpaid.length === 0 ? (
               <EmptyState title="No unpaid invoices." actionLabel="Open invoicing" onAction={() => navigate("/invoices")} />
             ) : (
               <div className="mini-list">
                 {stats.unpaid.map((invoice) => (
-                  <button
+                  <MiniRow
                     key={invoice.id}
-                    type="button"
-                    className="mini-row"
+                    icon="rupee"
+                    title={invoice.invoice_number}
+                    meta={`${invoice.client_name} · ${money(invoice.balance_amount)}`}
+                    status={invoice.status}
                     onClick={() => navigate(`/invoices?q=${encodeURIComponent(invoice.invoice_number || "")}&focus=${invoice.id}`)}
-                  >
-                    <span>
-                      <strong>{invoice.invoice_number}</strong>
-                      <small>{invoice.client_name} · {money(invoice.balance_amount)}</small>
-                    </span>
-                    <StatusPill value={invoice.status} />
-                  </button>
+                  />
                 ))}
               </div>
             )}

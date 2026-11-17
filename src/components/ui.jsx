@@ -314,9 +314,9 @@ export function RowActions({ children }) {
   return <div className="row-actions">{children}</div>;
 }
 
-export function KpiCard({ icon, label, value, trend }) {
+export function KpiCard({ icon, label, value, trend, tone }) {
   return (
-    <article className="card kpi">
+    <article className={`card kpi${tone ? ` kpi-${tone}` : ""}`}>
       <div className="kpi-top">
         <span className="kpi-icon">
           <Icon name={icon} />
