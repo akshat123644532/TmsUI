@@ -76,13 +76,29 @@ export function Select({ children, ...props }) {
 }
 
 export function StatusNext({ value, next = [], onChange }) {
+  const tone = statusTone(value);
+  const label = String(value || "—").replaceAll("_", " ");
+  const options = next.filter((status) => status !== value);
+
+  if (!options.length) {
+    return <StatusPill value={value} />;
+  }
+
   return (
-    <Select value={value} onChange={(event) => onChange(event.target.value)}>
-      <option value={value}>{String(value || "—").replaceAll("_", " ")}</option>
-      {next.filter((status) => status !== value).map((status) => (
-        <option key={status} value={status}>{status.replaceAll("_", " ")}</option>
-      ))}
-    </Select>
+    <label className={`status-next tone-${tone}`}>
+      <span className="status-next-dot" aria-hidden="true" />
+      <select
+        value={value}
+        aria-label={`Status ${label}`}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value={value}>{label}</option>
+        {options.map((status) => (
+          <option key={status} value={status}>{status.replaceAll("_", " ")}</option>
+        ))}
+      </select>
+      <span className="status-next-caret" aria-hidden="true" />
+    </label>
   );
 }
 
