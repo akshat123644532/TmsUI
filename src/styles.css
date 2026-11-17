@@ -2038,6 +2038,23 @@ td .pill {
   flex: 0 0 auto;
 }
 
+.bilty-copy-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #8a5a00;
+  background: rgba(240, 180, 41, 0.18);
+}
+
+.bilty-copy-check.limited {
+  border-color: rgba(240, 180, 41, 0.35);
+}
+
 .bilty-copy-settings-panel {
   margin-bottom: 14px;
   padding: 14px;
@@ -2084,12 +2101,34 @@ td .pill {
 }
 
 .bilty-print-sheet {
+  position: relative;
+  overflow: hidden;
   background: #fff;
   color: #1a1a1a;
   border-radius: 12px;
   padding: 18px;
   border: 2px solid #d7d7d7;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.bilty-print-watermark {
+  position: absolute;
+  right: -4%;
+  bottom: 8%;
+  font-size: clamp(42px, 8vw, 84px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  opacity: 0.07;
+  transform: rotate(-18deg);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 0;
+}
+
+.bilty-print-sheet > *:not(.bilty-print-watermark) {
+  position: relative;
+  z-index: 1;
 }
 
 .bilty-print-copy-banner {
@@ -2100,6 +2139,19 @@ td .pill {
   padding: 16px 18px;
   border-bottom: 3px solid #222;
   border-radius: 10px 10px 0 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.bilty-print-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.bilty-print-sheet.is-driver .bilty-print-section h2 {
+  font-size: 12px;
 }
 
 .bilty-print-copy-title {

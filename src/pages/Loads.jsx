@@ -643,117 +643,202 @@ function ReserveForm({ onClose, onReserved }) {
   );
 }
 
-function sectionEntries(section) {
+const SECTION_TITLES = {
+  header: "Header",
+  party_route: "Party & Route",
+  goods: "Goods",
+  freight: "Freight / Charges",
+  insurance_terms: "Insurance / Terms",
+  delivery_note: "Delivery note",
+};
+
+const DRIVER_HIDDEN_SECTIONS = new Set(["freight", "insurance_terms"]);
+
+function isEmptyField(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string" && value.trim() === "") return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  return false;
+}
+
+function sectionEntries(section, { hideEmpty = true } = {}) {
   if (!section || typeof section !== "object") return [];
   if (Array.isArray(section)) {
-    return section.map((row, index) => {
+    return section.flatMap((row, index) => {
       if (row && typeof row === "object") {
         const label = row.label || row.key || row.charge_type || `Item ${index + 1}`;
-        const value = row.value ?? row.amount ?? row.text ?? Object.values(row).filter((v) => typeof v !== "object").join(" · ");
-        return [label, value];
+        const value = row.value ?? row.amount ?? row.text
+          ?? Object.entries(row)
+            .filter(([k]) => !["label", "key", "charge_type"].includes(k))
+            .map(([, v]) => v)
+            .filter((v) => typeof v !== "object")
+            .join(" · ");
+        if (hideEmpty && isEmptyField(value)) return [];
+        return [[label, value]];
       }
-      return [`Item ${index + 1}`, row];
+      if (hideEmpty && isEmptyField(row)) return [];
+      return [[`Item ${index + 1}`, row]];
     });
   }
-  return Object.entries(section).map(([key, value]) => {
-    if (key === "charges") return null;
+  return Object.entries(section).flatMap(([key, value]) => {
+    if (key === "charges") return [];
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      return [key, Object.entries(value).map(([k, v]) => `${k}: ${v ?? "—"}`).join(" · ")];
+      const nested = Object.entries(value)
+        .filter(([, v]) => !(hideEmpty && isEmptyField(v)))
+        .map(([k, v]) => `${prettyLabel(k)}: ${v ?? "—"}`)
+        .join(" · ");
+      if (hideEmpty && !nested) return [];
+      return [[key, nested || "—"]];
     }
     if (Array.isArray(value)) {
-      return [key, value.map((item) => (typeof item === "object" ? JSON.stringify(item) : item)).join(", ")];
+      if (hideEmpty && !value.length) return [];
+      return [[key, value.map((item) => (typeof item === "object" ? JSON.stringify(item) : item)).join(", ")]];
     }
-    return [key, value];
-  }).filter(Boolean);
+    if (hideEmpty && isEmptyField(value)) return [];
+    return [[key, value]];
+  });
 }
 
 function prettyKey(key) {
   return prettyLabel(key);
 }
 
-const SECTION_ORDER = [
-  ["header", "Header"],
-  ["party_route", "Party & Route"],
-  ["goods", "Goods"],
-  ["freight", "Freight / Charges"],
-  ["insurance_terms", "Insurance / Terms"],
-];
+function resolveVisibleSections(page) {
+  const sections = page?.sections && typeof page.sections === "object" ? page.sections : {};
+  const copyType = String(page?.copy_type || "").toUpperCase();
+  const isDriver = copyType === "DRIVER";
 
-function BiltyPrintPage({ page, bilty }) {
-  const sections = page?.sections || {};
+  let keys = Array.isArray(page?.visible_sections) && page.visible_sections.length
+    ? page.visible_sections.map(String)
+    : Object.keys(sections);
+
+  // Never invent sections that are not present on this page payload.
+  keys = keys.filter((key) => Object.prototype.hasOwnProperty.call(sections, key));
+
+  // Driver copy: never render freight / insurance blocks.
+  if (isDriver) {
+    keys = keys.filter((key) => !DRIVER_HIDDEN_SECTIONS.has(key));
+  }
+
+  return keys;
+}
+
+function freightChargeRows(block) {
+  if (!block || typeof block !== "object") return [];
+  if (Array.isArray(block.charges)) return block.charges;
+  if (Array.isArray(block)) return block;
+  return [];
+}
+
+function BiltyPrintSection({ sectionKey, block, color }) {
+  const title = SECTION_TITLES[sectionKey] || prettyLabel(sectionKey);
+  const entries = sectionEntries(block, { hideEmpty: true });
+  const chargeRows = sectionKey === "freight" ? freightChargeRows(block) : [];
+  const total = sectionKey === "freight" && block && typeof block === "object" && !Array.isArray(block)
+    ? block.total_amount
+    : null;
+
+  if (!entries.length && !chargeRows.length && total == null) {
+    // Section key exists but has no usable fields — still show a light shell only for known note blocks.
+    if (sectionKey === "delivery_note" && (typeof block === "string" || block == null)) {
+      return (
+        <section className="bilty-print-section" style={{ borderTopColor: color }}>
+          <h2>{title}</h2>
+          <p className="bilty-print-note">{block ? String(block) : "—"}</p>
+        </section>
+      );
+    }
+    return null;
+  }
+
+  return (
+    <section className="bilty-print-section" style={{ borderTopColor: color }}>
+      <h2 style={{ borderBottomColor: color }}>{title}</h2>
+      {chargeRows.length ? (
+        <table className="bilty-print-table">
+          <thead>
+            <tr>
+              <th>Charge</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {chargeRows.map((row, index) => (
+              <tr key={index}>
+                <td>{prettyKey(row.charge_type || row.label || `Charge ${index + 1}`)}</td>
+                <td>{isEmptyField(row.amount ?? row.value) ? "—" : money(row.amount ?? row.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {entries.length ? (
+        <dl className="bilty-print-grid">
+          {entries.map(([entryKey, value]) => (
+            <div key={String(entryKey)}>
+              <dt>{prettyKey(entryKey)}</dt>
+              <dd>{isEmptyField(value) ? "—" : String(value)}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {total != null && total !== "" ? (
+        <p className="bilty-print-total">Total · {money(total)}</p>
+      ) : null}
+    </section>
+  );
+}
+
+function BiltyPrintPage({ page }) {
+  const sections = page?.sections && typeof page.sections === "object" ? page.sections : {};
   const color = normalizeHex(page?.color_hex) || "#FFFFFF";
-  const biltyNo = bilty?.bilty_number || sections.header?.bilty_number || "Bilty";
+  const visible = resolveVisibleSections(page);
+  const isDriver = String(page?.copy_type || "").toUpperCase() === "DRIVER";
+  const header = sections.header && typeof sections.header === "object" ? sections.header : {};
+  const biltyNo = header.bilty_number || page?.bilty_number || "Bilty";
+  const biltyDate = header.bilty_date || page?.bilty_date;
 
   return (
     <article
-      className={`bilty-print-sheet bilty-print-page${page?.page_break_after ? " break-after" : ""}`}
+      className={`bilty-print-sheet bilty-print-page${page?.page_break_after ? " break-after" : ""}${isDriver ? " is-driver" : ""}`}
+      data-copy-type={page?.copy_type || ""}
       style={{
         "--copy-color": color,
         borderColor: color,
-        background: `linear-gradient(${color} 0%, ${color} 48px, #ffffff 160px)`,
+        background: `linear-gradient(${color} 0%, ${color} 52px, #ffffff 168px)`,
       }}
     >
+      <div className="bilty-print-watermark" style={{ color }} aria-hidden="true">
+        {page?.title || prettyLabel(page?.copy_type)}
+      </div>
+
       <div className="bilty-print-copy-banner" style={{ background: color, borderColor: color }}>
         <strong className="bilty-print-copy-title">{page?.title || prettyLabel(page?.copy_type)}</strong>
         <span className="bilty-print-copy-sub">
-          {page?.color_name || color} · {page?.copy_type}
+          {page?.color_name || color}
+          {isDriver ? " · Limited fields" : ""}
         </span>
       </div>
 
-      <header className="bilty-print-banner">
+      <header className="bilty-print-banner" style={{ borderBottomColor: color }}>
         <div>
           <p className="bilty-print-kicker">Lorry receipt / bilty</p>
           <h1>{biltyNo}</h1>
         </div>
         <div className="bilty-print-meta">
-          <span>{formatDate(bilty?.bilty_date || sections.header?.bilty_date)}</span>
-          {bilty?.status ? <StatusPill value={bilty.status} /> : null}
+          {biltyDate ? <span>{formatDate(biltyDate)}</span> : null}
+          <span>{prettyLabel(page?.copy_type)}</span>
         </div>
       </header>
 
-      {SECTION_ORDER.map(([key, label]) => {
-        const block = sections[key];
-        const entries = sectionEntries(block);
-        const chargeRows = key === "freight"
-          ? (Array.isArray(block?.charges) ? block.charges : Array.isArray(block) ? block : [])
-          : [];
-        if (!entries.length && !chargeRows.length && !block) return null;
-        return (
-          <section key={key} className="bilty-print-section" style={{ borderTopColor: color }}>
-            <h2 style={{ color: "#222", borderBottomColor: color }}>{label}</h2>
-            {chargeRows.length ? (
-              <table className="bilty-print-table">
-                <thead>
-                  <tr>
-                    <th>Charge</th>
-                    <th>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {chargeRows.map((row, index) => (
-                    <tr key={index}>
-                      <td>{prettyKey(row.charge_type || row.label || `Charge ${index + 1}`)}</td>
-                      <td>{money(row.amount ?? row.value)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <dl className="bilty-print-grid">
-                {entries.map(([entryKey, value]) => (
-                  <div key={String(entryKey)}>
-                    <dt>{prettyKey(entryKey)}</dt>
-                    <dd>{value === null || value === undefined || value === "" ? "—" : String(value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-            {key === "freight" && (block?.total_amount != null || bilty?.total_amount != null) ? (
-              <p className="bilty-print-total">Total · {money(block?.total_amount ?? bilty?.total_amount)}</p>
-            ) : null}
-          </section>
-        );
-      })}
+      {visible.map((sectionKey) => (
+        <BiltyPrintSection
+          key={sectionKey}
+          sectionKey={sectionKey}
+          block={sections[sectionKey]}
+          color={color}
+        />
+      ))}
 
       <footer className="bilty-print-sign">
         <div><span>Consignor</span><em /></div>
@@ -966,30 +1051,43 @@ function PrintScreen({ bilty, onClose }) {
           <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={loadingSettings} />
           <span>Select All</span>
         </label>
-        {copies.map((row) => (
-          <label className="bilty-copy-check" key={row.copy_type}>
-            <input
-              type="checkbox"
-              checked={selected.has(row.copy_type)}
-              onChange={() => toggleCopy(row.copy_type)}
-              disabled={loadingSettings}
-            />
-            <span className="bilty-copy-dot" style={{ background: row.color_hex }} />
-            <span>
-              {row.label}
-              <small>{row.color_name}</small>
-            </span>
-          </label>
-        ))}
+        {copies.map((row) => {
+          const limited = String(row.copy_type).toUpperCase() === "DRIVER";
+          return (
+            <label className={`bilty-copy-check${limited ? " limited" : ""}`} key={row.copy_type}>
+              <input
+                type="checkbox"
+                checked={selected.has(row.copy_type)}
+                onChange={() => toggleCopy(row.copy_type)}
+                disabled={loadingSettings}
+              />
+              <span className="bilty-copy-dot" style={{ background: row.color_hex }} />
+              <span>
+                {row.label}
+                <small>
+                  {row.color_name}
+                  {limited ? (
+                    <em className="bilty-copy-badge">Limited fields</em>
+                  ) : null}
+                </small>
+              </span>
+            </label>
+          );
+        })}
       </div>
 
       {error ? <Banner>{error}</Banner> : null}
 
       {pages.length ? (
         <div className="bilty-print-pages">
-          <p className="muted no-print">{print.page_count || pages.length} page(s) ready</p>
-          {pages.map((page) => (
-            <BiltyPrintPage key={`${page.copy_type}-${page.page}`} page={page} bilty={bilty} />
+          <p className="muted no-print">
+            {print.page_count || pages.length} page(s) · layouts follow each copy&apos;s visible sections
+          </p>
+          {pages.map((page, index) => (
+            <BiltyPrintPage
+              key={`${page.copy_type || "copy"}-${page.page || index}`}
+              page={page}
+            />
           ))}
         </div>
       ) : (
