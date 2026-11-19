@@ -300,14 +300,16 @@ export function ShipmentForm({
 }) {
   const { company, user } = useAuth();
   const companyName = company?.name || user?.company_name || getActiveCompany()?.name || "";
-  const editing = Boolean(biltyId);
   const [vehicles, setVehicles] = useState([]);
   const [trips, setTrips] = useState([]);
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState(() => (initial ? formFromBilty(initial) : emptyForm()));
+  const [preparing, setPreparing] = useState(() => !biltyId && !initial);
+  const [recordId, setRecordId] = useState(() => biltyId || initial?.id || null);
+  const [form, setForm] = useState(() => (initial ? formFromBilty(initial) : emptyForm({ status: "RESERVED" })));
   const locked = readOnly || isBiltyReadonly(form.status || initial?.status);
+  const editing = Boolean(recordId);
 
   useEffect(() => {
     api(`${endpoints.vehicles}?limit=100`)
@@ -318,21 +320,63 @@ export function ShipmentForm({
       .catch(() => {});
   }, []);
 
+  // Existing reserved / edit: load by id when initial not passed.
   useEffect(() => {
     if (!biltyId || initial) return;
     let alive = true;
     api(endpoints.bilty(biltyId))
       .then((data) => {
         if (!alive) return;
-        const bilty = data.bilty || data;
+        const bilty = extractBilty(data, data);
+        setRecordId(bilty.id || biltyId);
         setForm(formFromBilty({ ...bilty, charges: data.charges || bilty.charges || [] }));
       })
       .catch((err) => alive && setError(err.message));
     return () => { alive = false; };
   }, [biltyId, initial]);
 
+  // New form: prepare reserved number immediately.
+  useEffect(() => {
+    if (biltyId || initial) return undefined;
+    let alive = true;
+    setPreparing(true);
+    setError("");
+    api(endpoints.biltyPrepareForm, {
+      method: "POST",
+      body: { bilty_date: todayIso() },
+    })
+      .then((data) => {
+        if (!alive) return;
+        const bilty = extractBilty(data, data);
+        if (!bilty?.id || !bilty?.bilty_number) {
+          throw new Error("Prepare form did not return bilty number");
+        }
+        setRecordId(bilty.id);
+        setForm((current) => ({
+          ...current,
+          ...formFromBilty({
+            ...current,
+            ...bilty,
+            status: bilty.status || "RESERVED",
+            bilty_date: bilty.bilty_date || current.bilty_date,
+            charges: current.charges,
+          }),
+          bilty_number: bilty.bilty_number,
+          status: bilty.status || "RESERVED",
+        }));
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(err.message || "Could not get bilty number");
+      })
+      .finally(() => {
+        if (alive) setPreparing(false);
+      });
+    return () => { alive = false; };
+  }, [biltyId, initial]);
+
   const set = (key) => (event) => {
-    if (locked) return;
+    if (locked || preparing) return;
     const value = event?.target ? event.target.value : event;
     setForm((current) => {
       const next = { ...current, [key]: value };
@@ -348,7 +392,7 @@ export function ShipmentForm({
   };
 
   const setCharge = (index, key, value) => {
-    if (locked) return;
+    if (locked || preparing) return;
     setForm((current) => ({
       ...current,
       charges: current.charges.map((row, i) => (i === index ? { ...row, [key]: value } : row)),
@@ -357,9 +401,13 @@ export function ShipmentForm({
   };
 
   const total = chargesTotal(form.charges);
-  const canConfirm = editing && ["DRAFT", "CREATED", "RESERVED"].includes(String(form.status || "").toUpperCase());
+  const canConfirm = editing && !preparing && ["DRAFT", "CREATED", "RESERVED"].includes(String(form.status || "").toUpperCase());
 
   const save = async ({ confirm = false } = {}) => {
+    if (!recordId) {
+      setError("Bilty number is not ready yet");
+      return;
+    }
     const nextIssues = confirm
       ? confirmIssues(form)
       : (() => {
@@ -380,13 +428,22 @@ export function ShipmentForm({
     setBusy(true);
     setError("");
     try {
-      const body = buildPayload(form, confirm ? { status: "CONFIRMED" } : {});
-      const data = editing
-        ? await api(endpoints.bilty(biltyId), { method: "PUT", body })
-        : await api(endpoints.bilties, { method: "POST", body });
-      const bilty = extractBilty(data, { ...body, id: biltyId, status: confirm ? "CONFIRMED" : (data.bilty?.status || form.status) });
+      const currentStatus = String(form.status || "").toUpperCase();
+      const status = confirm
+        ? "CONFIRMED"
+        : currentStatus === "RESERVED"
+          ? "DRAFT"
+          : undefined;
+      const body = buildPayload(form, status ? { status } : {});
+      const data = await api(endpoints.bilty(recordId), { method: "PUT", body });
+      const bilty = extractBilty(data, {
+        ...body,
+        id: recordId,
+        bilty_number: form.bilty_number,
+        status: status || data.bilty?.status || form.status,
+      });
       if (confirm) onConfirm?.(bilty);
-      else onCreated?.(editing ? "Bilty saved" : "Bilty created", bilty);
+      else onCreated?.("Bilty saved", bilty);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -396,13 +453,14 @@ export function ShipmentForm({
 
   const submit = async (event) => {
     event.preventDefault();
-    if (locked) return;
+    if (locked || preparing) return;
     await save({ confirm: false });
   };
 
   return (
     <form onSubmit={submit} className={`bilty-form${locked ? " is-readonly" : ""}`} noValidate>
       <FormLegend />
+      {preparing ? <p className="form-hint">Getting number…</p> : null}
       {locked ? (
         <p className="form-hint">Confirmed / used bilties are read-only — Print or POD only.</p>
       ) : null}
@@ -411,13 +469,12 @@ export function ShipmentForm({
         <Field label="Company" hint="Print header uses company name / PAN / GSTIN">
           <input value={companyName || "—"} readOnly className="readonly-input" />
         </Field>
-        <Field label="Bilty number" hint={editing ? "Reserved number" : "Leave blank to auto-assign"}>
+        <Field label="Bilty number" hint="Assigned on open · read-only">
           <input
-            value={form.bilty_number}
-            onChange={set("bilty_number")}
-            placeholder="Auto if blank"
-            readOnly={editing || locked}
-            className={editing || locked ? "readonly-input" : undefined}
+            value={preparing ? "" : form.bilty_number}
+            readOnly
+            className="readonly-input"
+            placeholder={preparing ? "Getting number…" : "—"}
           />
         </Field>
         <Field label="Bilty date">
@@ -586,14 +643,14 @@ export function ShipmentForm({
           ) : null
         ) : (
           <>
-            <button className="btn btn-primary" type="submit" disabled={busy}>
-              {busy ? "Saving..." : editing ? "Save details" : "Create bilty"}
+            <button className="btn btn-primary" type="submit" disabled={busy || preparing || !recordId}>
+              {preparing ? "Getting number…" : busy ? "Saving..." : "Save details"}
             </button>
             {canConfirm ? (
               <button
                 className="btn btn-primary"
                 type="button"
-                disabled={busy}
+                disabled={busy || preparing || !recordId}
                 onClick={() => save({ confirm: true })}
               >
                 Confirm
