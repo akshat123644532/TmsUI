@@ -1897,6 +1897,22 @@ td .pill {
   border-top: 1px solid var(--line);
 }
 
+.bilty-reserve-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bilty-reserve-actions-end {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
 .bilty-section {
   border: 1px solid var(--line);
   border-radius: 16px;

@@ -710,14 +710,18 @@ function ReserveForm({ onClose, onReserved }) {
         </Field>
       </div>
 
-      <div className="page-actions bilty-detail-actions">
+      <div className="page-actions bilty-reserve-actions">
         <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Close</button>
-        <button type="button" className="btn btn-ghost" onClick={reserveRange} disabled={busy}>
-          Reserve range
-        </button>
-        <button type="button" className="btn btn-primary" onClick={reserveNext} disabled={busy}>
-          {busy ? "Reserving..." : "Reserve next number"}
-        </button>
+        <div className="bilty-reserve-actions-end">
+          <button type="button" className="btn btn-ghost" onClick={reserveRange} disabled={busy}>
+            {Number.isInteger(Number(count)) && Number(count) > 0
+              ? `Reserve ${Number(count)} number${Number(count) === 1 ? "" : "s"}`
+              : "Reserve numbers"}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={reserveNext} disabled={busy}>
+            {busy ? "Reserving..." : "Reserve next number"}
+          </button>
+        </div>
       </div>
 
       {lastNumbers.length ? (
