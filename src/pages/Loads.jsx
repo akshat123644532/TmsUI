@@ -16,13 +16,11 @@ import {
   Pager,
   SearchField,
   Select,
-  StatusNext,
   StatusPill,
   ViewButton,
 } from "../components/ui";
 import {
   BILTY_STATUSES,
-  NEXT_STATUS,
   blankIssues,
   formatDate,
   hasIssues,
@@ -36,15 +34,23 @@ import {
 import { useToast } from "../toast";
 
 const STATUSES = BILTY_STATUSES;
-const CREATE_STATUSES = ["RESERVED", "DRAFT", "CONFIRMED"];
 const MAX_RANGE = 100;
+const READONLY_STATUSES = new Set(["CONFIRMED", "USED", "COMPLETED", "CANCELLED"]);
 
 const COPY_TYPES = ["CONSIGNOR", "CONSIGNEE", "DRIVER", "TRANSPORT"];
 const PAYMENT_MODES = ["TO_PAY", "PAID", "TO_BE_BILLED"];
 const GST_PAYERS = ["CONSIGNOR", "CONSIGNEE", "TRANSPORT_OPERATOR"];
 const DELIVERY_TYPES = ["DOOR_DELIVERY", "GODOWN"];
 const INSURANCE_AT_RISK = ["CARRIER", "OWNER"];
-const CHARGE_TYPES = ["FREIGHT", "LABOUR", "SURCHARGE", "ST_CHARGE", "RISK_CHARGE", "GR_CHARGE", "OTHER"];
+const CHARGE_TYPES = ["FREIGHT", "LABOUR", "SURCHARGE", "ST_CHARGE", "RISK_CHARGE", "GR_CHARGE"];
+
+function defaultCharges() {
+  return CHARGE_TYPES.map((charge_type) => emptyCharge(charge_type));
+}
+
+function isBiltyReadonly(status) {
+  return READONLY_STATUSES.has(String(status || "").toUpperCase());
+}
 
 const DEFAULT_COPY_SETTINGS = [
   { copy_type: "CONSIGNOR", label: "Consignor Copy", color_hex: "#FFFFFF", color_name: "White", sort_order: 1 },
@@ -102,14 +108,16 @@ function emptyForm(overrides = {}) {
   return {
     bilty_number: "",
     bilty_date: todayIso(),
-    copy_type: "CONSIGNOR",
     status: "DRAFT",
+    trip_id: "",
     consignor: "",
     consignor_address: "",
     consignee: "",
     consignee_address: "",
     pickup_location: "",
     drop_location: "",
+    delivery_type: "DOOR_DELIVERY",
+    delivery_office_address: "",
     truck_no: "",
     vehicle_id: "",
     packages: "",
@@ -120,39 +128,44 @@ function emptyForm(overrides = {}) {
     rate_remark: "",
     invoice_no: "",
     invoice_value: "",
+    eway_bill_no: "",
+    from_no: "",
     payment_mode: "TO_BE_BILLED",
     gst_payer: "CONSIGNOR",
-    delivery_type: "DOOR_DELIVERY",
     insurance_at_risk: "OWNER",
     insurance_company: "",
     insurance_policy_no: "",
     insurance_date: "",
     insurance_amount: "",
-    terms_notes: "",
-    charges: [emptyCharge("FREIGHT"), emptyCharge("LABOUR")],
+    charges: defaultCharges(),
     ...overrides,
   };
 }
 
 function formFromBilty(bilty) {
-  const charges = Array.isArray(bilty?.charges) && bilty.charges.length
-    ? bilty.charges.map((row) => ({
-        charge_type: row.charge_type || "OTHER",
-        amount: row.amount === null || row.amount === undefined ? "" : String(row.amount),
-      }))
-    : [emptyCharge("FREIGHT"), emptyCharge("LABOUR")];
+  const incoming = Array.isArray(bilty?.charges) ? bilty.charges : [];
+  const byType = new Map(incoming.map((row) => [row.charge_type, row]));
+  const charges = CHARGE_TYPES.map((charge_type) => {
+    const row = byType.get(charge_type);
+    return {
+      charge_type,
+      amount: row && row.amount !== null && row.amount !== undefined ? String(row.amount) : "",
+    };
+  });
 
   return emptyForm({
     bilty_number: bilty.bilty_number || "",
     bilty_date: bilty.bilty_date ? String(bilty.bilty_date).slice(0, 10) : todayIso(),
-    copy_type: bilty.copy_type || "CONSIGNOR",
     status: bilty.status || "DRAFT",
+    trip_id: bilty.trip_id ? String(bilty.trip_id) : "",
     consignor: bilty.consignor || "",
     consignor_address: bilty.consignor_address || "",
     consignee: bilty.consignee || "",
     consignee_address: bilty.consignee_address || "",
     pickup_location: bilty.pickup_location || "",
     drop_location: bilty.drop_location || "",
+    delivery_type: bilty.delivery_type || "DOOR_DELIVERY",
+    delivery_office_address: bilty.delivery_office_address || "",
     truck_no: bilty.truck_no || "",
     vehicle_id: bilty.vehicle_id ? String(bilty.vehicle_id) : "",
     packages: bilty.packages === null || bilty.packages === undefined ? "" : String(bilty.packages),
@@ -163,15 +176,15 @@ function formFromBilty(bilty) {
     rate_remark: bilty.rate_remark || "",
     invoice_no: bilty.invoice_no || "",
     invoice_value: bilty.invoice_value || "",
+    eway_bill_no: bilty.eway_bill_no || "",
+    from_no: bilty.from_no || "",
     payment_mode: bilty.payment_mode || "TO_BE_BILLED",
     gst_payer: bilty.gst_payer || "CONSIGNOR",
-    delivery_type: bilty.delivery_type || "DOOR_DELIVERY",
     insurance_at_risk: bilty.insurance_at_risk || "OWNER",
     insurance_company: bilty.insurance_company || "",
     insurance_policy_no: bilty.insurance_policy_no || "",
     insurance_date: bilty.insurance_date ? String(bilty.insurance_date).slice(0, 10) : "",
     insurance_amount: bilty.insurance_amount === null || bilty.insurance_amount === undefined ? "" : String(bilty.insurance_amount),
-    terms_notes: bilty.terms_notes || "",
     charges,
   });
 }
@@ -206,18 +219,18 @@ function SectionCard({ step, title, hint, children }) {
   );
 }
 
-function buildPayload(form) {
-  return {
-    bilty_number: form.bilty_number.trim(),
+function buildPayload(form, { status } = {}) {
+  const payload = {
     bilty_date: form.bilty_date || null,
-    copy_type: form.copy_type,
-    status: form.status,
+    trip_id: form.trip_id ? Number(form.trip_id) : null,
     consignor: strOrNull(form.consignor),
     consignor_address: strOrNull(form.consignor_address),
     consignee: strOrNull(form.consignee),
     consignee_address: strOrNull(form.consignee_address),
     pickup_location: strOrNull(form.pickup_location),
     drop_location: strOrNull(form.drop_location),
+    delivery_type: form.delivery_type,
+    delivery_office_address: strOrNull(form.delivery_office_address),
     truck_no: strOrNull(form.truck_no),
     vehicle_id: form.vehicle_id ? Number(form.vehicle_id) : null,
     packages: numOrNull(form.packages),
@@ -228,15 +241,15 @@ function buildPayload(form) {
     rate_remark: strOrNull(form.rate_remark),
     invoice_no: strOrNull(form.invoice_no),
     invoice_value: strOrNull(form.invoice_value),
+    eway_bill_no: strOrNull(form.eway_bill_no),
+    from_no: strOrNull(form.from_no),
     payment_mode: form.payment_mode,
     gst_payer: form.gst_payer,
-    delivery_type: form.delivery_type,
     insurance_at_risk: form.insurance_at_risk,
     insurance_company: strOrNull(form.insurance_company),
     insurance_policy_no: strOrNull(form.insurance_policy_no),
     insurance_date: form.insurance_date || null,
     insurance_amount: numOrNull(form.insurance_amount),
-    terms_notes: strOrNull(form.terms_notes),
     charges: (form.charges || [])
       .filter((row) => row.charge_type)
       .map((row) => ({
@@ -244,21 +257,64 @@ function buildPayload(form) {
         amount: Number(row.amount) || 0,
       })),
   };
+  if (form.bilty_number?.trim()) payload.bilty_number = form.bilty_number.trim();
+  if (status) payload.status = status;
+  return payload;
 }
 
-export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = null }) {
+function confirmIssues(form) {
+  const nextIssues = blankIssues([
+    ["consignor", form.consignor, "Enter consignor"],
+    ["consignee", form.consignee, "Enter consignee"],
+    ["pickup_location", form.pickup_location, "Enter from location"],
+    ["drop_location", form.drop_location, "Enter to location"],
+    ["truck_no", form.truck_no, "Enter truck number"],
+    ["packages", form.packages, "Enter packages"],
+    ["goods_description", form.goods_description, "Enter goods description"],
+    ["payment_mode", form.payment_mode, "Select payment mode"],
+    ["gst_payer", form.gst_payer, "Select GST payer"],
+  ]);
+  for (const key of ["packages", "weight_kg", "charged_weight_kg", "insurance_amount"]) {
+    if (form[key] !== "" && (!Number.isFinite(Number(form[key])) || Number(form[key]) < 0)) {
+      nextIssues[key] = "Enter a valid number";
+    }
+  }
+  const hasCharge = (form.charges || []).some((row) => Number(row.amount) > 0 || row.charge_type === "FREIGHT");
+  if (!hasCharge) nextIssues.charges = "Add freight / charges before confirm";
+  form.charges.forEach((row, index) => {
+    if (row.amount !== "" && (!Number.isFinite(Number(row.amount)) || Number(row.amount) < 0)) {
+      nextIssues[`charge_${index}`] = "Enter a valid amount";
+    }
+  });
+  return nextIssues;
+}
+
+export function ShipmentForm({
+  onClose,
+  onCreated,
+  initial = null,
+  biltyId = null,
+  readOnly = false,
+  onConfirm = null,
+  onPrint = null,
+}) {
   const { company, user } = useAuth();
   const companyName = company?.name || user?.company_name || getActiveCompany()?.name || "";
   const editing = Boolean(biltyId);
   const [vehicles, setVehicles] = useState([]);
+  const [trips, setTrips] = useState([]);
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(() => (initial ? formFromBilty(initial) : emptyForm()));
+  const locked = readOnly || isBiltyReadonly(form.status || initial?.status);
 
   useEffect(() => {
     api(`${endpoints.vehicles}?limit=100`)
       .then((data) => setVehicles(data.vehicles || data.rows || []))
+      .catch(() => {});
+    api(`${endpoints.trips}?limit=100`)
+      .then((data) => setTrips(data.trips || data.rows || []))
       .catch(() => {});
   }, []);
 
@@ -276,6 +332,7 @@ export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = nul
   }, [biltyId, initial]);
 
   const set = (key) => (event) => {
+    if (locked) return;
     const value = event?.target ? event.target.value : event;
     setForm((current) => {
       const next = { ...current, [key]: value };
@@ -291,57 +348,45 @@ export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = nul
   };
 
   const setCharge = (index, key, value) => {
+    if (locked) return;
     setForm((current) => ({
       ...current,
       charges: current.charges.map((row, i) => (i === index ? { ...row, [key]: value } : row)),
     }));
-  };
-
-  const addCharge = () => {
-    setForm((current) => ({
-      ...current,
-      charges: [...current.charges, emptyCharge("OTHER")],
-    }));
-  };
-
-  const removeCharge = (index) => {
-    setForm((current) => ({
-      ...current,
-      charges: current.charges.length <= 1
-        ? current.charges
-        : current.charges.filter((_, i) => i !== index),
-    }));
+    setIssues((current) => ({ ...current, charges: "", [`charge_${index}`]: "" }));
   };
 
   const total = chargesTotal(form.charges);
+  const canConfirm = editing && ["DRAFT", "CREATED", "RESERVED"].includes(String(form.status || "").toUpperCase());
 
-  const submit = async (event) => {
-    event.preventDefault();
-    const nextIssues = blankIssues([
-      ["bilty_number", form.bilty_number, "Enter a bilty number"],
-    ]);
-    for (const key of ["packages", "weight_kg", "charged_weight_kg", "insurance_amount"]) {
-      if (form[key] !== "" && (!Number.isFinite(Number(form[key])) || Number(form[key]) < 0)) {
-        nextIssues[key] = "Enter a valid number";
-      }
-    }
-    form.charges.forEach((row, index) => {
-      if (row.amount !== "" && (!Number.isFinite(Number(row.amount)) || Number(row.amount) < 0)) {
-        nextIssues[`charge_${index}`] = "Enter a valid amount";
-      }
-    });
+  const save = async ({ confirm = false } = {}) => {
+    const nextIssues = confirm
+      ? confirmIssues(form)
+      : (() => {
+          const soft = {};
+          for (const key of ["packages", "weight_kg", "charged_weight_kg", "insurance_amount"]) {
+            if (form[key] !== "" && (!Number.isFinite(Number(form[key])) || Number(form[key]) < 0)) {
+              soft[key] = "Enter a valid number";
+            }
+          }
+          return soft;
+        })();
     setIssues(nextIssues);
-    if (hasIssues(nextIssues)) return;
+    if (hasIssues(nextIssues)) {
+      if (confirm) setError("Fill mandatory fields and charges before confirm");
+      return;
+    }
 
     setBusy(true);
     setError("");
     try {
-      const body = buildPayload(form);
+      const body = buildPayload(form, confirm ? { status: "CONFIRMED" } : {});
       const data = editing
         ? await api(endpoints.bilty(biltyId), { method: "PUT", body })
         : await api(endpoints.bilties, { method: "POST", body });
-      const bilty = extractBilty(data, { ...body, id: biltyId });
-      onCreated?.(editing ? "Bilty updated" : "Bilty created", bilty);
+      const bilty = extractBilty(data, { ...body, id: biltyId, status: confirm ? "CONFIRMED" : (data.bilty?.status || form.status) });
+      if (confirm) onConfirm?.(bilty);
+      else onCreated?.(editing ? "Bilty saved" : "Bilty created", bilty);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -349,63 +394,44 @@ export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = nul
     }
   };
 
-  return (
-    <form onSubmit={submit} className="bilty-form" noValidate>
-      <FormLegend />
+  const submit = async (event) => {
+    event.preventDefault();
+    if (locked) return;
+    await save({ confirm: false });
+  };
 
-      <SectionCard step="1" title="Header" hint="LR / bilty identity and copy type">
-        <Field label="Company" hint="From logged-in company context">
+  return (
+    <form onSubmit={submit} className={`bilty-form${locked ? " is-readonly" : ""}`} noValidate>
+      <FormLegend />
+      {locked ? (
+        <p className="form-hint">Confirmed / used bilties are read-only — Print or POD only.</p>
+      ) : null}
+
+      <SectionCard step="1" title="Identity" hint="Company header prints from settings — not edited here">
+        <Field label="Company" hint="Print header uses company name / PAN / GSTIN">
           <input value={companyName || "—"} readOnly className="readonly-input" />
         </Field>
-        <Field label="Bilty number" required error={issues.bilty_number}>
+        <Field label="Bilty number" hint={editing ? "Reserved number" : "Leave blank to auto-assign"}>
           <input
             value={form.bilty_number}
             onChange={set("bilty_number")}
-            placeholder="68256"
-            disabled={editing}
+            placeholder="Auto if blank"
+            readOnly={editing || locked}
+            className={editing || locked ? "readonly-input" : undefined}
           />
         </Field>
         <Field label="Bilty date">
-          <input type="date" value={form.bilty_date} onChange={set("bilty_date")} />
+          <input type="date" value={form.bilty_date} onChange={set("bilty_date")} disabled={locked} />
         </Field>
-        <Field label="Copy type">
-          <Select value={form.copy_type} onChange={set("copy_type")}>
-            {COPY_TYPES.map((value) => (
-              <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
-            ))}
-          </Select>
+        <Field label="Status">
+          <input value={form.status || "—"} readOnly className="readonly-input" />
         </Field>
-        <Field label="Status" hint={editing ? "Use status advance on the list or detail" : "New bilties start as Reserved, Draft or Confirmed"}>
-          <Select value={form.status} onChange={set("status")} disabled={editing}>
-            {(editing ? [form.status] : CREATE_STATUSES).map((status) => (
-              <option key={status} value={status}>{status}</option>
-            ))}
-          </Select>
-        </Field>
-      </SectionCard>
-
-      <SectionCard step="2" title="Party & Route" hint="Consignor, consignee, from / to and truck">
-        <Field label="Consignor">
-          <input value={form.consignor} onChange={set("consignor")} placeholder="Symphony Limited" />
-        </Field>
-        <Field label="Consignee">
-          <input value={form.consignee} onChange={set("consignee")} placeholder="Gupta Electronics" />
-        </Field>
-        <Field label="Consignor address" className="span-2">
-          <textarea rows={2} value={form.consignor_address} onChange={set("consignor_address")} placeholder="Dadri" />
-        </Field>
-        <Field label="Consignee address" className="span-2">
-          <textarea rows={2} value={form.consignee_address} onChange={set("consignee_address")} placeholder="Biharsharif" />
-        </Field>
-        <Field label="From (pickup)">
-          <input value={form.pickup_location} onChange={set("pickup_location")} placeholder="Dadri" />
-        </Field>
-        <Field label="To (drop)">
-          <input value={form.drop_location} onChange={set("drop_location")} placeholder="Biharsharif" />
+        <Field label="Truck no" error={issues.truck_no}>
+          <input value={form.truck_no} onChange={set("truck_no")} placeholder="HR68C9561" disabled={locked} />
         </Field>
         <Field label="Vehicle">
-          <Select value={form.vehicle_id} onChange={set("vehicle_id")}>
-            <option value="">Optional — pick registration</option>
+          <Select value={form.vehicle_id} onChange={set("vehicle_id")} disabled={locked}>
+            <option value="">Optional</option>
             {vehicles.map((row) => (
               <option key={row.id} value={row.id}>
                 {row.registration_no || `Vehicle #${row.id}`}
@@ -413,48 +439,111 @@ export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = nul
             ))}
           </Select>
         </Field>
-        <Field label="Truck no">
-          <input value={form.truck_no} onChange={set("truck_no")} placeholder="HR68C9561" />
+        <Field label="Trip link" className="span-2">
+          <Select value={form.trip_id} onChange={set("trip_id")} disabled={locked}>
+            <option value="">None</option>
+            {trips.map((trip) => (
+              <option key={trip.id} value={trip.id}>
+                #{trip.id} · {trip.source || "?"} → {trip.destination || "?"}
+              </option>
+            ))}
+          </Select>
         </Field>
       </SectionCard>
 
-      <SectionCard step="3" title="Goods" hint="Packages, description, weight and invoice">
+      <SectionCard step="2" title="Parties" hint="Consignor, consignee, route and delivery">
+        <Field label="Consignor" error={issues.consignor}>
+          <input value={form.consignor} onChange={set("consignor")} placeholder="Symphony Limited" disabled={locked} />
+        </Field>
+        <Field label="Consignee" error={issues.consignee}>
+          <input value={form.consignee} onChange={set("consignee")} placeholder="Gupta Electronics" disabled={locked} />
+        </Field>
+        <Field label="Consignor address" className="span-2">
+          <textarea rows={2} value={form.consignor_address} onChange={set("consignor_address")} disabled={locked} />
+        </Field>
+        <Field label="Consignee address" className="span-2">
+          <textarea rows={2} value={form.consignee_address} onChange={set("consignee_address")} disabled={locked} />
+        </Field>
+        <Field label="From" error={issues.pickup_location}>
+          <input value={form.pickup_location} onChange={set("pickup_location")} disabled={locked} />
+        </Field>
+        <Field label="To" error={issues.drop_location}>
+          <input value={form.drop_location} onChange={set("drop_location")} disabled={locked} />
+        </Field>
+        <Field label="Delivery type">
+          <Select value={form.delivery_type} onChange={set("delivery_type")} disabled={locked}>
+            {DELIVERY_TYPES.map((value) => (
+              <option key={value} value={value}>{value === "DOOR_DELIVERY" ? "Door" : "Godown"}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Delivery office address" className="span-2">
+          <textarea rows={2} value={form.delivery_office_address} onChange={set("delivery_office_address")} disabled={locked} />
+        </Field>
+      </SectionCard>
+
+      <SectionCard step="3" title="Goods" hint="Packages, weights, invoice and e-way">
         <Field label="Packages" error={issues.packages}>
-          <input type="number" min="0" step="1" value={form.packages} onChange={set("packages")} placeholder="128" />
+          <input type="number" min="0" step="1" value={form.packages} onChange={set("packages")} disabled={locked} />
         </Field>
         <Field label="Packages label">
-          <input value={form.packages_label} onChange={set("packages_label")} placeholder="CBOX" />
+          <input value={form.packages_label} onChange={set("packages_label")} placeholder="CBOX" disabled={locked} />
         </Field>
-        <Field label="Goods description" className="span-2">
-          <input value={form.goods_description} onChange={set("goods_description")} placeholder="Air Cooler" />
+        <Field label="Goods description" className="span-2" error={issues.goods_description}>
+          <input value={form.goods_description} onChange={set("goods_description")} disabled={locked} />
         </Field>
         <Field label="Weight (kg)" error={issues.weight_kg}>
-          <input type="number" min="0" step="0.01" value={form.weight_kg} onChange={set("weight_kg")} />
+          <input type="number" min="0" step="0.01" value={form.weight_kg} onChange={set("weight_kg")} disabled={locked} />
         </Field>
         <Field label="Charged weight (kg)" error={issues.charged_weight_kg}>
-          <input type="number" min="0" step="0.01" value={form.charged_weight_kg} onChange={set("charged_weight_kg")} />
+          <input type="number" min="0" step="0.01" value={form.charged_weight_kg} onChange={set("charged_weight_kg")} disabled={locked} />
         </Field>
         <Field label="Rate / remark" className="span-2">
-          <input value={form.rate_remark} onChange={set("rate_remark")} placeholder="Rate note" />
-        </Field>
-        <Field label="Invoice no">
-          <input value={form.invoice_no} onChange={set("invoice_no")} placeholder="GT26866714" />
+          <input value={form.rate_remark} onChange={set("rate_remark")} disabled={locked} />
         </Field>
         <Field label="Invoice value">
-          <input value={form.invoice_value} onChange={set("invoice_value")} placeholder="AS PER INVOICE" />
+          <input value={form.invoice_value} onChange={set("invoice_value")} placeholder="AS PER INVOICE" disabled={locked} />
+        </Field>
+        <Field label="Invoice no">
+          <input value={form.invoice_no} onChange={set("invoice_no")} disabled={locked} />
+        </Field>
+        <Field label="E-way bill no">
+          <input value={form.eway_bill_no} onChange={set("eway_bill_no")} disabled={locked} />
+        </Field>
+        <Field label="From no" hint="Optional">
+          <input value={form.from_no} onChange={set("from_no")} disabled={locked} />
         </Field>
       </SectionCard>
 
-      <SectionCard step="4" title="Freight / Charges" hint="Charge rows, payment mode and GST payer">
+      <SectionCard step="4" title="Risk" hint="Insurance at carrier / owner risk">
+        <Field label="Insurance at risk">
+          <Select value={form.insurance_at_risk} onChange={set("insurance_at_risk")} disabled={locked}>
+            {INSURANCE_AT_RISK.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Insurance company">
+          <input value={form.insurance_company} onChange={set("insurance_company")} disabled={locked} />
+        </Field>
+        <Field label="Policy no">
+          <input value={form.insurance_policy_no} onChange={set("insurance_policy_no")} disabled={locked} />
+        </Field>
+        <Field label="Insurance date">
+          <input type="date" value={form.insurance_date} onChange={set("insurance_date")} disabled={locked} />
+        </Field>
+        <Field label="Insurance amount" error={issues.insurance_amount}>
+          <input type="number" min="0" step="0.01" value={form.insurance_amount} onChange={set("insurance_amount")} disabled={locked} />
+        </Field>
+      </SectionCard>
+
+      <SectionCard step="5" title="Charges" hint="Freight and other LR charges">
         <div className="span-2 bilty-charges">
+          {issues.charges ? <p className="form-error">{issues.charges}</p> : null}
           {form.charges.map((row, index) => (
-            <div className="bilty-charge-row" key={`charge-${index}`}>
+            <div className="bilty-charge-row" key={row.charge_type}>
               <Field label={index === 0 ? "Charge type" : ""}>
-                <Select value={row.charge_type} onChange={(event) => setCharge(index, "charge_type", event.target.value)}>
-                  {CHARGE_TYPES.map((type) => (
-                    <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
-                  ))}
-                </Select>
+                <input value={row.charge_type.replaceAll("_", " ")} readOnly className="readonly-input" />
               </Field>
               <Field label={index === 0 ? "Amount" : ""} error={issues[`charge_${index}`]}>
                 <input
@@ -463,32 +552,24 @@ export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = nul
                   step="0.01"
                   value={row.amount}
                   onChange={(event) => setCharge(index, "amount", event.target.value)}
+                  disabled={locked}
                 />
               </Field>
-              <button
-                type="button"
-                className="btn btn-ghost bilty-charge-remove"
-                onClick={() => removeCharge(index)}
-                disabled={form.charges.length <= 1}
-              >
-                Remove
-              </button>
             </div>
           ))}
           <div className="bilty-charges-foot">
-            <button type="button" className="btn btn-ghost" onClick={addCharge}>Add charge</button>
             <p className="total-line">Total amount · {money(total)}</p>
           </div>
         </div>
-        <Field label="Payment mode">
-          <Select value={form.payment_mode} onChange={set("payment_mode")}>
+        <Field label="Payment mode" error={issues.payment_mode}>
+          <Select value={form.payment_mode} onChange={set("payment_mode")} disabled={locked}>
             {PAYMENT_MODES.map((value) => (
               <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
             ))}
           </Select>
         </Field>
-        <Field label="GST payer">
-          <Select value={form.gst_payer} onChange={set("gst_payer")}>
+        <Field label="GST payer" error={issues.gst_payer}>
+          <Select value={form.gst_payer} onChange={set("gst_payer")} disabled={locked}>
             {GST_PAYERS.map((value) => (
               <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
             ))}
@@ -496,149 +577,220 @@ export function ShipmentForm({ onClose, onCreated, initial = null, biltyId = nul
         </Field>
       </SectionCard>
 
-      <SectionCard step="5" title="Insurance / Terms / Signature" hint="Delivery, insurance and print signature area">
-        <Field label="Delivery type">
-          <Select value={form.delivery_type} onChange={set("delivery_type")}>
-            {DELIVERY_TYPES.map((value) => (
-              <option key={value} value={value}>{value.replaceAll("_", " ")}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Insurance at risk">
-          <Select value={form.insurance_at_risk} onChange={set("insurance_at_risk")}>
-            {INSURANCE_AT_RISK.map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Insurance company">
-          <input value={form.insurance_company} onChange={set("insurance_company")} />
-        </Field>
-        <Field label="Policy no">
-          <input value={form.insurance_policy_no} onChange={set("insurance_policy_no")} />
-        </Field>
-        <Field label="Insurance date">
-          <input type="date" value={form.insurance_date} onChange={set("insurance_date")} />
-        </Field>
-        <Field label="Insurance amount" error={issues.insurance_amount}>
-          <input type="number" min="0" step="0.01" value={form.insurance_amount} onChange={set("insurance_amount")} />
-        </Field>
-        <Field label="Terms / notes" className="span-2">
-          <textarea rows={3} value={form.terms_notes} onChange={set("terms_notes")} placeholder="Carrier liability / delivery terms" />
-        </Field>
-        <div className="span-2 bilty-sign-box" aria-hidden="true">
-          <span>Authorised signatory</span>
-          <em>Signature on print copy</em>
-        </div>
-      </SectionCard>
-
       {error ? <p className="form-error">{error}</p> : null}
-      <FormActions onCancel={onClose} busy={busy} submitLabel={editing ? "Save bilty" : "Create bilty"} />
+      <div className="form-actions">
+        <button className="btn btn-ghost" type="button" onClick={onClose}>Close</button>
+        {locked ? (
+          onPrint ? (
+            <button className="btn btn-primary" type="button" onClick={onPrint}>Print copies</button>
+          ) : null
+        ) : (
+          <>
+            <button className="btn btn-primary" type="submit" disabled={busy}>
+              {busy ? "Saving..." : editing ? "Save details" : "Create bilty"}
+            </button>
+            {canConfirm ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={busy}
+                onClick={() => save({ confirm: true })}
+              >
+                Confirm
+              </button>
+            ) : null}
+          </>
+        )}
+      </div>
     </form>
   );
 }
 
 function ReserveForm({ onClose, onReserved }) {
-  const [mode, setMode] = useState("single");
+  const { user } = useAuth();
+  const admin = ["SUPER_ADMIN", "COMPANY_ADMIN"].includes(String(user?.user_type || "").toUpperCase());
+  const [biltyDate, setBiltyDate] = useState(todayIso());
+  const [count, setCount] = useState("10");
   const [error, setError] = useState("");
-  const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState("");
-  const [form, setForm] = useState({ bilty_number: "", prefix: "", from: "", to: "" });
+  const [lastNumbers, setLastNumbers] = useState([]);
+  const [sequence, setSequence] = useState({ prefix: "", next_number: "" });
+  const [seqBusy, setSeqBusy] = useState(false);
 
-  const set = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
-    setIssues((current) => ({ ...current, [key]: "" }));
-  };
+  useEffect(() => {
+    if (!admin) return;
+    api(endpoints.biltySequence)
+      .then((data) => {
+        const row = data.sequence || data;
+        setSequence({
+          prefix: row.prefix || "",
+          next_number: row.next_number != null ? String(row.next_number) : "",
+        });
+      })
+      .catch(() => {});
+  }, [admin]);
 
-  const reserve = (bilty_number) => api(endpoints.biltyReserve, { method: "POST", body: { bilty_number } });
-
-  const submit = async (event) => {
-    event.preventDefault();
-    setError("");
-
-    if (mode === "single") {
-      const nextIssues = blankIssues([["bilty_number", form.bilty_number, "Enter a bilty number"]]);
-      setIssues(nextIssues);
-      if (hasIssues(nextIssues)) return;
-
-      setBusy(true);
-      try {
-        await reserve(form.bilty_number.trim());
-        onReserved("Bilty number reserved");
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
-
-    const nextIssues = blankIssues([
-      ["from", form.from, "Enter the first number"],
-      ["to", form.to, "Enter the last number"],
-    ]);
-    const start = Number(form.from);
-    const end = Number(form.to);
-    if (!nextIssues.from && (!Number.isInteger(start) || start < 0)) nextIssues.from = "Use whole numbers";
-    if (!nextIssues.to && (!Number.isInteger(end) || end < 0)) nextIssues.to = "Use whole numbers";
-    if (!nextIssues.from && !nextIssues.to) {
-      if (end < start) nextIssues.to = "Must be greater than or equal to the first number";
-      else if (end - start + 1 > MAX_RANGE) nextIssues.to = `Reserve at most ${MAX_RANGE} numbers at a time`;
-    }
-    setIssues(nextIssues);
-    if (hasIssues(nextIssues)) return;
-
-    const width = Math.max(form.from.trim().length, form.to.trim().length);
-    const prefix = form.prefix.trim();
-    const from = `${prefix}${String(start).padStart(width, "0")}`;
-    const to = `${prefix}${String(end).padStart(width, "0")}`;
-
+  const reserveNext = async () => {
     setBusy(true);
-    setProgress("Reserving range...");
+    setError("");
     try {
-      const result = await api(endpoints.biltyReserveRange, { method: "POST", body: { from, to } });
-      const done = result.reserved?.length || 0;
-      const skipped = result.skipped?.length || 0;
-      if (done) onReserved(`${done} bilty number${done === 1 ? "" : "s"} reserved${skipped ? `, ${skipped} skipped` : ""}`);
-      else setError(skipped ? `All ${skipped} numbers already exist` : "No numbers reserved");
+      const body = biltyDate ? { bilty_date: biltyDate } : {};
+      const data = await api(endpoints.biltyReserve, { method: "POST", body });
+      const bilty = extractBilty(data, data);
+      const number = bilty.bilty_number || data.bilty_number || data.reserved?.[0];
+      setLastNumbers(number ? [number] : []);
+      onReserved(number ? `Reserved ${number}` : "Bilty number reserved", bilty);
     } catch (err) {
       setError(err.message);
     } finally {
-      setProgress("");
+      setBusy(false);
+    }
+  };
+
+  const reserveRange = async () => {
+    const n = Number(count);
+    if (!Number.isInteger(n) || n < 1) {
+      setError("Enter a count of at least 1");
+      return;
+    }
+    if (n > MAX_RANGE) {
+      setError(`Reserve at most ${MAX_RANGE} at a time`);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api(endpoints.biltyReserveRange, {
+        method: "POST",
+        body: { count: n, bilty_date: biltyDate || undefined },
+      });
+      const numbers = (data.reserved || data.bilties || [])
+        .map((row) => (typeof row === "string" ? row : row.bilty_number))
+        .filter(Boolean);
+      setLastNumbers(numbers);
+      const done = numbers.length || data.count || 0;
+      if (done) onReserved(`${done} bilty number${done === 1 ? "" : "s"} reserved`);
+      else setError("No numbers reserved");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveSequence = async (event) => {
+    event.preventDefault();
+    setSeqBusy(true);
+    setError("");
+    try {
+      await api(endpoints.biltySequence, {
+        method: "PUT",
+        body: {
+          prefix: sequence.prefix.trim(),
+          next_number: sequence.next_number === "" ? undefined : Number(sequence.next_number),
+        },
+      });
+      onReserved("Sequence updated");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSeqBusy(false);
+    }
+  };
+
+  return (
+    <div className="bilty-reserve stack">
+      <p className="muted">Reserve numbers only — fill LR details after opening a reserved bilty.</p>
+      <div className="form-grid">
+        <Field label="Bilty date" hint="Optional for reserve next">
+          <input type="date" value={biltyDate} onChange={(event) => setBiltyDate(event.target.value)} />
+        </Field>
+        <Field label="Range count" hint={`Up to ${MAX_RANGE}`}>
+          <input type="number" min="1" max={MAX_RANGE} value={count} onChange={(event) => setCount(event.target.value)} />
+        </Field>
+      </div>
+
+      <div className="page-actions bilty-detail-actions">
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Close</button>
+        <button type="button" className="btn btn-ghost" onClick={reserveRange} disabled={busy}>
+          Reserve range
+        </button>
+        <button type="button" className="btn btn-primary" onClick={reserveNext} disabled={busy}>
+          {busy ? "Reserving..." : "Reserve next number"}
+        </button>
+      </div>
+
+      {lastNumbers.length ? (
+        <div className="bilty-reserve-result">
+          <strong>Reserved</strong>
+          <p>{lastNumbers.join(", ")}</p>
+        </div>
+      ) : null}
+
+      {admin ? (
+        <form onSubmit={saveSequence} className="bilty-sequence form-grid">
+          <p className="span-2 muted">Admin sequence · prefix / next number</p>
+          <Field label="Prefix">
+            <input
+              value={sequence.prefix}
+              onChange={(event) => setSequence((current) => ({ ...current, prefix: event.target.value }))}
+              placeholder="BL-"
+            />
+          </Field>
+          <Field label="Next number">
+            <input
+              value={sequence.next_number}
+              onChange={(event) => setSequence((current) => ({ ...current, next_number: event.target.value }))}
+              inputMode="numeric"
+            />
+          </Field>
+          <div className="span-2 form-actions">
+            <button className="btn btn-ghost" type="submit" disabled={seqBusy}>
+              {seqBusy ? "Saving..." : "Save sequence"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {error ? <p className="form-error">{error}</p> : null}
+    </div>
+  );
+}
+
+function CancelBiltyForm({ bilty, onClose, onCancelled }) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!reason.trim()) {
+      setError("Cancel reason is required");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api(endpoints.bilty(bilty.id), {
+        method: "DELETE",
+        body: { cancel_reason: reason.trim() },
+      });
+      onCancelled();
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setBusy(false);
     }
   };
 
   return (
-    <form onSubmit={submit} className="form-grid" noValidate>
-      <FormLegend />
-      <Field label="Reserve">
-        <Select value={mode} onChange={(event) => { setMode(event.target.value); setIssues({}); setError(""); }}>
-          <option value="single">Single number</option>
-          <option value="range">Number range</option>
-        </Select>
+    <form onSubmit={submit} className="stack" noValidate>
+      <p className="muted">Cancel bilty <strong>{bilty.bilty_number}</strong>. Reason is required.</p>
+      <Field label="Cancel reason" required error={error && !reason.trim() ? error : ""}>
+        <textarea rows={3} value={reason} onChange={(event) => { setReason(event.target.value); setError(""); }} placeholder="Wrong booking / duplicate / customer cancelled" />
       </Field>
-      {mode === "single" ? (
-        <Field label="Bilty number" required error={issues.bilty_number}>
-          <input value={form.bilty_number} onChange={set("bilty_number")} placeholder="68256" autoFocus />
-        </Field>
-      ) : (
-        <>
-          <Field label="Prefix" hint="Optional, e.g. BL-">
-            <input value={form.prefix} onChange={set("prefix")} placeholder="BL-" />
-          </Field>
-          <Field label="From" required error={issues.from} hint="Leading zeros are kept, e.g. 0001">
-            <input value={form.from} onChange={set("from")} inputMode="numeric" placeholder="1001" />
-          </Field>
-          <Field label="To" required error={issues.to} hint={`Up to ${MAX_RANGE} numbers`}>
-            <input value={form.to} onChange={set("to")} inputMode="numeric" placeholder="1010" />
-          </Field>
-        </>
-      )}
-      {progress ? <p className="form-hint span-2">{progress}</p> : null}
-      {error ? <p className="form-error span-2">{error}</p> : null}
-      <FormActions onCancel={onClose} busy={busy} submitLabel={mode === "single" ? "Reserve" : "Reserve range"} />
+      {error && reason.trim() ? <p className="form-error">{error}</p> : null}
+      <FormActions onCancel={onClose} busy={busy} submitLabel="Cancel bilty" />
     </form>
   );
 }
@@ -1125,8 +1277,11 @@ function PrintScreen({ bilty, onClose }) {
   );
 }
 
-function BiltyDetail({ row, onClose, onEdit, onPrint, onCancel, onStatus, busy }) {
-  const next = NEXT_STATUS.bilty[row.status] || [];
+function BiltyDetail({ row, onClose, onOpen, onPrint, onCancel, busy }) {
+  const status = String(row.status || "").toUpperCase();
+  const reserved = status === "RESERVED";
+  const draft = status === "DRAFT" || status === "CREATED";
+  const locked = isBiltyReadonly(status);
   const route = row.pickup_location || row.drop_location
     ? `${row.pickup_location || "?"} → ${row.drop_location || "?"}`
     : "—";
@@ -1136,42 +1291,39 @@ function BiltyDetail({ row, onClose, onEdit, onPrint, onCancel, onStatus, busy }
       <DetailList rows={[
         ["Bilty number", row.bilty_number],
         ["Date", formatDate(row.bilty_date)],
-        ["Copy", row.copy_type],
         ["Status", row.status],
         ["Consignor", row.consignor],
         ["Consignee", row.consignee],
         ["Route", route],
         ["Truck no", row.truck_no],
+        ["Delivery", row.delivery_type],
         ["Packages", row.packages != null ? `${row.packages}${row.packages_label ? ` ${row.packages_label}` : ""}` : "—"],
         ["Goods", row.goods_description],
-        ["Weight (kg)", row.weight_kg],
-        ["Charged weight", row.charged_weight_kg],
+        ["E-way bill", row.eway_bill_no],
         ["Payment", row.payment_mode],
         ["GST payer", row.gst_payer],
         ["Total", row.total_amount != null ? money(row.total_amount) : "—"],
-        ["Delivery", row.delivery_type],
         ["Insurance risk", row.insurance_at_risk],
         ["Created", formatDate(row.created_at)],
         ["Updated", formatDate(row.updated_at)],
       ]} />
 
-      {next.length ? (
-        <Field label="Advance status">
-          <StatusNext
-            value={row.status}
-            next={next}
-            onChange={onStatus}
-          />
-        </Field>
-      ) : null}
-
       <div className="page-actions bilty-detail-actions">
         <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Close</button>
-        {row.status !== "CANCELLED" ? (
-          <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel bilty</button>
+        {status !== "CANCELLED" ? (
+          <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>Cancel</button>
         ) : null}
-        <button type="button" className="btn btn-ghost" onClick={onPrint} disabled={busy}>Print</button>
-        <button type="button" className="btn btn-primary" onClick={onEdit} disabled={busy}>Edit</button>
+        {locked || draft ? (
+          <button type="button" className="btn btn-ghost" onClick={onPrint} disabled={busy}>Print</button>
+        ) : null}
+        {reserved || draft ? (
+          <button type="button" className="btn btn-primary" onClick={onOpen} disabled={busy}>
+            {reserved ? "Open" : "Edit details"}
+          </button>
+        ) : null}
+        {locked ? (
+          <button type="button" className="btn btn-primary" onClick={onOpen} disabled={busy}>View</button>
+        ) : null}
       </div>
     </div>
   );
@@ -1186,6 +1338,7 @@ export default function Loads() {
   const [status, setStatus] = useState("");
   const [detail, setDetail] = useState(null);
   const [editRow, setEditRow] = useState(null);
+  const [cancelRow, setCancelRow] = useState(null);
   const [printBilty, setPrintBilty] = useState(null);
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1228,13 +1381,16 @@ export default function Loads() {
     ? `${row.pickup_location || "?"} → ${row.drop_location || "?"}`
     : "—");
 
+  const loadBilty = async (row) => {
+    const data = await api(endpoints.bilty(row.id));
+    return extractBilty(data, row);
+  };
+
   const openDetail = async (row) => {
     setActionError("");
     setBusy(true);
     try {
-      const data = await api(endpoints.bilty(row.id));
-      const bilty = data.bilty || data;
-      setDetail({ ...row, ...bilty, charges: data.charges || bilty.charges || [] });
+      setDetail(await loadBilty(row));
     } catch (err) {
       setDetail(row);
       setActionError(err.message);
@@ -1243,36 +1399,15 @@ export default function Loads() {
     }
   };
 
-  const changeStatus = async (row, nextStatus) => {
-    setBusy(true);
+  const openForm = async (row) => {
     setActionError("");
-    try {
-      await api(endpoints.bilty(row.id), { method: "PUT", body: { status: nextStatus } });
-      toast(`Status → ${nextStatus.replaceAll("_", " ")}`);
-      reload();
-      if (detail?.id === row.id) {
-        setDetail((current) => ({ ...current, status: nextStatus }));
-      }
-    } catch (err) {
-      setActionError(err.message);
-      toast(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const cancelBilty = async (row) => {
-    if (!window.confirm(`Cancel bilty ${row.bilty_number}?`)) return;
+    setDetail(null);
     setBusy(true);
-    setActionError("");
     try {
-      await api(endpoints.bilty(row.id), { method: "DELETE" });
-      toast("Bilty cancelled");
-      setDetail(null);
-      reload();
+      setEditRow(await loadBilty(row));
     } catch (err) {
+      setEditRow(row);
       setActionError(err.message);
-      toast(err.message);
     } finally {
       setBusy(false);
     }
@@ -1284,10 +1419,10 @@ export default function Loads() {
     setPrintBilty(row);
   };
 
-  const afterSave = (message, bilty) => {
+  const afterSave = (message, bilty, { openPrintAfter = false } = {}) => {
     toast(message);
     reload();
-    if (bilty?.id) setPrintBilty(extractBilty({ bilty }, bilty));
+    if (openPrintAfter && bilty?.id) setPrintBilty(extractBilty({ bilty }, bilty));
   };
 
   useEffect(() => {
@@ -1299,12 +1434,12 @@ export default function Loads() {
 
   return (
     <section>
-      <PageHeader title="Bilty" subtitle="Save once, then print coloured Consignor / Consignee / Driver / Transport copies.">
-        <button className="btn btn-ghost" type="button" onClick={() => setReserveOpen(true)}>
-          Reserve
+      <PageHeader title="Bilty" subtitle="Reserve numbers → open reserved LR → confirm → print 4 coloured copies.">
+        <button className="btn btn-ghost" type="button" onClick={() => setOpen(true)}>
+          New bilty
         </button>
-        <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
-          New Bilty
+        <button className="btn btn-primary" type="button" onClick={() => setReserveOpen(true)}>
+          Reserve
         </button>
       </PageHeader>
       <Banner>{error || actionError}</Banner>
@@ -1319,7 +1454,7 @@ export default function Loads() {
             rows={pager.rows}
             highlightId={focus}
             empty={query || status ? "No bilties match this search." : "No bilties yet."}
-            emptyAction={query || status ? null : { label: "New Bilty", onClick: () => setOpen(true) }}
+            emptyAction={query || status ? null : { label: "Reserve number", onClick: () => setReserveOpen(true) }}
             columns={[
               { key: "bilty_number", label: "Bilty number", render: (row) => row.bilty_number },
               { key: "route", label: "From → To", render: route },
@@ -1327,24 +1462,29 @@ export default function Loads() {
               {
                 key: "status",
                 label: "Status",
-                render: (row) => (
-                  <StatusNext
-                    value={row.status}
-                    next={NEXT_STATUS.bilty[row.status] || []}
-                    onChange={(next) => changeStatus(row, next)}
-                  />
-                ),
+                render: (row) => <StatusPill value={row.status} />,
               },
               { key: "created", label: "Created", render: (row) => formatDate(row.created_at) },
               {
                 key: "actions",
                 label: "",
-                render: (row) => (
-                  <div className="row-actions">
-                    <button type="button" className="btn btn-ghost table-action" onClick={() => openPrint(row)}>Print</button>
-                    <ViewButton onClick={() => openDetail(row)} />
-                  </div>
-                ),
+                render: (row) => {
+                  const st = String(row.status || "").toUpperCase();
+                  return (
+                    <div className="row-actions">
+                      {st === "RESERVED" ? (
+                        <button type="button" className="btn btn-ghost table-action" onClick={() => openForm(row)}>Open</button>
+                      ) : null}
+                      {st === "DRAFT" || st === "CREATED" ? (
+                        <button type="button" className="btn btn-ghost table-action" onClick={() => openForm(row)}>Edit</button>
+                      ) : null}
+                      {isBiltyReadonly(st) || st === "DRAFT" || st === "CREATED" ? (
+                        <button type="button" className="btn btn-ghost table-action" onClick={() => openPrint(row)}>Print</button>
+                      ) : null}
+                      <ViewButton onClick={() => openDetail(row)} />
+                    </div>
+                  );
+                },
               },
             ]}
           />
@@ -1358,13 +1498,12 @@ export default function Loads() {
             row={detail}
             busy={busy}
             onClose={() => setDetail(null)}
-            onEdit={() => {
-              setEditRow(detail);
+            onOpen={() => openForm(detail)}
+            onPrint={() => openPrint(detail)}
+            onCancel={() => {
+              setCancelRow(detail);
               setDetail(null);
             }}
-            onPrint={() => openPrint(detail)}
-            onCancel={() => cancelBilty(detail)}
-            onStatus={(next) => changeStatus(detail, next)}
           />
         </Modal>
       ) : null}
@@ -1380,8 +1519,21 @@ export default function Loads() {
           <ReserveForm
             onClose={() => setReserveOpen(false)}
             onReserved={(message) => {
-              setReserveOpen(false);
               toast(message);
+              reload();
+            }}
+          />
+        </Modal>
+      ) : null}
+
+      {cancelRow ? (
+        <Modal title={`Cancel · ${cancelRow.bilty_number}`} onClose={() => setCancelRow(null)}>
+          <CancelBiltyForm
+            bilty={cancelRow}
+            onClose={() => setCancelRow(null)}
+            onCancelled={() => {
+              setCancelRow(null);
+              toast("Bilty cancelled");
               reload();
             }}
           />
@@ -1401,14 +1553,27 @@ export default function Loads() {
       ) : null}
 
       {editRow ? (
-        <Modal title={`Edit · ${editRow.bilty_number}`} onClose={() => setEditRow(null)} wide>
+        <Modal
+          title={`${isBiltyReadonly(editRow.status) ? "View" : "Open"} · ${editRow.bilty_number}`}
+          onClose={() => setEditRow(null)}
+          wide
+        >
           <ShipmentForm
             biltyId={editRow.id}
             initial={editRow}
+            readOnly={isBiltyReadonly(editRow.status)}
             onClose={() => setEditRow(null)}
+            onPrint={() => {
+              setPrintBilty(editRow);
+              setEditRow(null);
+            }}
             onCreated={(message, bilty) => {
               setEditRow(null);
-              afterSave(message || "Bilty updated", bilty);
+              afterSave(message || "Bilty saved", bilty);
+            }}
+            onConfirm={(bilty) => {
+              setEditRow(null);
+              afterSave("Bilty confirmed", bilty, { openPrintAfter: true });
             }}
           />
         </Modal>

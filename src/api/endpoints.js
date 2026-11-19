@@ -45,6 +45,7 @@ export const endpoints = {
   biltyCopySettings: "/api/bilties/copy-settings",
   biltyReserve: "/api/bilties/reserve",
   biltyReserveRange: "/api/bilties/reserve-range",
+  biltySequence: "/api/bilties/sequence",
   trips: "/api/trips",
 
   tripExpenses: "/api/trip-expenses",

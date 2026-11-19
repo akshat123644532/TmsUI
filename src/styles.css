@@ -1875,6 +1875,28 @@ td .pill {
   gap: 14px;
 }
 
+.bilty-form.is-readonly {
+  opacity: 0.98;
+}
+
+.bilty-reserve-result {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(61, 214, 140, 0.28);
+  background: rgba(61, 214, 140, 0.1);
+}
+
+.bilty-reserve-result p {
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+
+.bilty-sequence {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .bilty-section {
   border: 1px solid var(--line);
   border-radius: 16px;
