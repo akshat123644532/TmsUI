@@ -8,6 +8,8 @@ import {
   DataTable,
   DeleteButton,
   DetailList,
+  ExpiresInFields,
+  ExpiryBadge,
   Field,
   FormActions,
   FormLegend,
@@ -21,7 +23,19 @@ import {
   Tabs,
   ViewButton,
 } from "../components/ui";
-import { blankIssues, formatDate, hasIssues, includesQuery, initials, today, usePaged, useResource, useSearchFocus } from "../lib";
+import {
+  DEFAULT_EXPIRES_IN_DAYS,
+  blankIssues,
+  calcExpiryDate,
+  formatDate,
+  hasIssues,
+  includesQuery,
+  initials,
+  today,
+  usePaged,
+  useResource,
+  useSearchFocus,
+} from "../lib";
 import { useToast } from "../toast";
 
 const VEHICLE_DOC_TYPES = ["RC", "INSURANCE", "FITNESS", "PERMIT", "PUC", "ROAD_TAX"];
@@ -82,13 +96,30 @@ function VehicleDocUpload({ vehicleId, onUploaded }) {
     document_type: "RC",
     document_number: "",
     issue_date: "",
-    expiry_date: "",
+    expires_in_days: DEFAULT_EXPIRES_IN_DAYS,
+    expiry_date: calcExpiryDate("", DEFAULT_EXPIRES_IN_DAYS),
     file: null,
   });
 
   const set = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
-    setIssues((current) => ({ ...current, [key]: "" }));
+    const value = event.target.value;
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "issue_date") {
+        next.expiry_date = calcExpiryDate(value, current.expires_in_days);
+      }
+      return next;
+    });
+    setIssues((current) => ({ ...current, [key]: "", expiry_date: key === "issue_date" ? "" : current.expiry_date }));
+  };
+
+  const setExpiresIn = (days) => {
+    setForm((current) => ({
+      ...current,
+      expires_in_days: days,
+      expiry_date: calcExpiryDate(current.issue_date, days),
+    }));
+    setIssues((current) => ({ ...current, expiry_date: "" }));
   };
 
   const takeFile = (file) => {
@@ -123,7 +154,8 @@ function VehicleDocUpload({ vehicleId, onUploaded }) {
         document_type: "RC",
         document_number: "",
         issue_date: "",
-        expiry_date: "",
+        expires_in_days: DEFAULT_EXPIRES_IN_DAYS,
+        expiry_date: calcExpiryDate("", DEFAULT_EXPIRES_IN_DAYS),
         file: null,
       });
       onUploaded();
@@ -170,9 +202,13 @@ function VehicleDocUpload({ vehicleId, onUploaded }) {
         <Field label="Issue date" required error={issues.issue_date}>
           <input type="date" value={form.issue_date} onChange={set("issue_date")} />
         </Field>
-        <Field label="Expiry date" required error={issues.expiry_date}>
-          <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
-        </Field>
+        <ExpiresInFields
+          issueDate={form.issue_date}
+          expiresInDays={form.expires_in_days}
+          expiryDate={form.expiry_date}
+          onExpiresInChange={setExpiresIn}
+          error={issues.expiry_date}
+        />
       </div>
 
       <label
@@ -300,7 +336,7 @@ function VehicleDocsPanel({ vehicle, onClose, toast }) {
             },
             { key: "number", label: "Number", render: (row) => row.document_number || "—" },
             { key: "issue", label: "Issue", render: (row) => formatDate(row.issue_date) },
-            { key: "expiry", label: "Expiry", render: (row) => formatDate(row.expiry_date) },
+            { key: "expiry", label: "Expiry", render: (row) => <ExpiryBadge expiryDate={row.expiry_date} /> },
             { key: "verify", label: "Verify", render: (row) => row.verification_status || "—" },
             {
               key: "file",

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api, DEMO_TOKEN, fetchAll, getToken, pingApi } from "../api";
 import { useAuth } from "../auth";
-import { initials, isAdminRole, isSuperAdminRole, roleLabel } from "../lib";
+import { expiryBadgeInfo, formatDate, initials, isAdminRole, isSuperAdminRole, roleLabel } from "../lib";
 import { useTheme } from "../theme";
 import { Icon } from "./Icons";
 import { Modal } from "./ui";
@@ -390,11 +390,15 @@ export default function Shell() {
               <div className="popover">
                 <h4>Documents</h4>
                 {alertNote ? <p className="muted">{alertNote}</p> : null}
-                {alerts.map((doc) => (
-                  <p key={doc.id}>
-                    {doc.document_type} {doc.document_number || ""} expires {String(doc.expiry_date).slice(0, 10)}
-                  </p>
-                ))}
+                {alerts.map((doc) => {
+                  const badge = expiryBadgeInfo(doc.expiry_date);
+                  return (
+                    <p key={doc.id}>
+                      {doc.document_type} {doc.document_number || ""} · {formatDate(doc.expiry_date)}
+                      {badge.label ? ` · ${badge.label}` : ""}
+                    </p>
+                  );
+                })}
               </div>
             ) : null}
           </div>

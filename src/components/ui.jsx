@@ -1,6 +1,13 @@
 import { useEffect } from "react";
 import { Icon } from "./Icons";
-import { statusTone } from "../lib";
+import {
+  DEFAULT_EXPIRES_IN_DAYS,
+  EXPIRES_IN_OPTIONS,
+  calcExpiryDate,
+  expiryBadgeInfo,
+  formatDate,
+  statusTone,
+} from "../lib";
 
 export function PageHeader({ title, subtitle, children }) {
   return (
@@ -73,6 +80,49 @@ export function TextInput(props) {
 
 export function Select({ children, ...props }) {
   return <select {...props}>{children}</select>;
+}
+
+/** Document upload: pick days → UI calculates expiry_date for the API. */
+export function ExpiresInFields({
+  issueDate,
+  expiresInDays = DEFAULT_EXPIRES_IN_DAYS,
+  expiryDate,
+  onExpiresInChange,
+  error,
+  showCalculatedDate = true,
+}) {
+  const calculated = expiryDate || calcExpiryDate(issueDate, expiresInDays);
+
+  return (
+    <>
+      <Field label="Expires in" required error={error}>
+        <Select
+          value={String(expiresInDays)}
+          onChange={(event) => onExpiresInChange?.(Number(event.target.value))}
+        >
+          {EXPIRES_IN_OPTIONS.map((row) => (
+            <option key={row.value} value={row.value}>{row.label}</option>
+          ))}
+        </Select>
+      </Field>
+      {showCalculatedDate ? (
+        <Field label="Expiry date" hint="Calculated from issue date (or today)">
+          <input type="date" value={calculated || ""} readOnly className="readonly-input" />
+        </Field>
+      ) : null}
+    </>
+  );
+}
+
+export function ExpiryBadge({ expiryDate }) {
+  const info = expiryBadgeInfo(expiryDate);
+  if (!expiryDate) return <span className="muted">—</span>;
+  return (
+    <span className="expiry-cell">
+      <span>{formatDate(expiryDate)}</span>
+      {info.label ? <span className={`pill ${info.tone}`}>{info.label}</span> : null}
+    </span>
+  );
 }
 
 export function StatusNext({ value, next = [], onChange }) {

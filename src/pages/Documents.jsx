@@ -6,6 +6,8 @@ import {
   Banner,
   DataTable,
   DeleteButton,
+  ExpiresInFields,
+  ExpiryBadge,
   Field,
   FormActions,
   FormLegend,
@@ -17,7 +19,16 @@ import {
   StatusPill,
   Tabs,
 } from "../components/ui";
-import { blankIssues, DOCUMENT_TYPES, formatDate, hasIssues, includesQuery, usePaged, useResource } from "../lib";
+import {
+  DEFAULT_EXPIRES_IN_DAYS,
+  blankIssues,
+  calcExpiryDate,
+  formatDate,
+  hasIssues,
+  includesQuery,
+  usePaged,
+  useResource,
+} from "../lib";
 import { useToast } from "../toast";
 
 const VEHICLE_TYPES = ["RC", "INSURANCE", "FITNESS", "PERMIT", "PUC", "ROAD_TAX"];
@@ -53,12 +64,29 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
     document_type: typeOptions[0] || "",
     document_number: "",
     issue_date: "",
-    expiry_date: "",
+    expires_in_days: DEFAULT_EXPIRES_IN_DAYS,
+    expiry_date: calcExpiryDate("", DEFAULT_EXPIRES_IN_DAYS),
     file: null,
   });
   const set = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
-    setIssues((current) => ({ ...current, [key]: "" }));
+    const value = event.target.value;
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "issue_date") {
+        next.expiry_date = calcExpiryDate(value, current.expires_in_days);
+      }
+      return next;
+    });
+    setIssues((current) => ({ ...current, [key]: "", expiry_date: key === "issue_date" ? "" : current.expiry_date }));
+  };
+
+  const setExpiresIn = (days) => {
+    setForm((current) => ({
+      ...current,
+      expires_in_days: days,
+      expiry_date: calcExpiryDate(current.issue_date, days),
+    }));
+    setIssues((current) => ({ ...current, expiry_date: "" }));
   };
 
   const takeFile = (file) => {
@@ -137,9 +165,13 @@ function DocumentForm({ kind, owners, onClose, onCreated }) {
         <Field label="Issue date" required error={issues.issue_date}>
           <input type="date" value={form.issue_date} onChange={set("issue_date")} />
         </Field>
-        <Field label="Expiry date" required error={issues.expiry_date}>
-          <input type="date" value={form.expiry_date} onChange={set("expiry_date")} />
-        </Field>
+        <ExpiresInFields
+          issueDate={form.issue_date}
+          expiresInDays={form.expires_in_days}
+          expiryDate={form.expiry_date}
+          onExpiresInChange={setExpiresIn}
+          error={issues.expiry_date}
+        />
       </div>
 
       <div className={`field${issues.document_type ? " invalid" : ""}`}>
@@ -331,7 +363,7 @@ export default function Documents() {
               { key: "type", label: "Type", render: (row) => row.document_type },
               { key: "number", label: "Number", render: (row) => row.document_number || "—" },
               { key: "issue", label: "Issue", render: (row) => formatDate(row.issue_date) },
-              { key: "expiry", label: "Expiry", render: (row) => formatDate(row.expiry_date) },
+              { key: "expiry", label: "Expiry", render: (row) => <ExpiryBadge expiryDate={row.expiry_date} /> },
               {
                 key: "url",
                 label: "File",

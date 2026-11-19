@@ -241,6 +241,89 @@ export function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Fixed “Expires in” options for document upload forms. */
+export const EXPIRES_IN_OPTIONS = [
+  { label: "5 days", value: 5 },
+  { label: "7 days", value: 7 },
+  { label: "15 days", value: 15 },
+  { label: "30 days", value: 30 },
+  { label: "90 days", value: 90 },
+];
+
+export const DEFAULT_EXPIRES_IN_DAYS = 30;
+
+function parseIsoDateOnly(value) {
+  const raw = String(value || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [y, m, d] = raw.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function toIsoDateOnly(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** expiry_date = (issue_date || today) + days, as YYYY-MM-DD. */
+export function calcExpiryDate(issueDate, days, fallbackBase = today()) {
+  const base = parseIsoDateOnly(issueDate) || parseIsoDateOnly(fallbackBase) || parseIsoDateOnly(today());
+  if (!base) return "";
+  const next = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  next.setDate(next.getDate() + Number(days || 0));
+  return toIsoDateOnly(next);
+}
+
+/** Exact option match from issue→expiry day gap; otherwise null. */
+export function matchExpiresInDays(issueDate, expiryDate) {
+  const start = parseIsoDateOnly(issueDate) || parseIsoDateOnly(today());
+  const end = parseIsoDateOnly(expiryDate);
+  if (!start || !end) return null;
+  const diff = Math.round((end.getTime() - start.getTime()) / 86400000);
+  return EXPIRES_IN_OPTIONS.some((row) => row.value === diff) ? diff : null;
+}
+
+/** Closest fixed option for an existing expiry (edit forms). */
+export function nearestExpiresInDays(issueDate, expiryDate, fallback = DEFAULT_EXPIRES_IN_DAYS) {
+  const exact = matchExpiresInDays(issueDate, expiryDate);
+  if (exact != null) return exact;
+  const start = parseIsoDateOnly(issueDate) || parseIsoDateOnly(today());
+  const end = parseIsoDateOnly(expiryDate);
+  if (!start || !end) return fallback;
+  const diff = Math.round((end.getTime() - start.getTime()) / 86400000);
+  let best = fallback;
+  let bestGap = Infinity;
+  for (const row of EXPIRES_IN_OPTIONS) {
+    const gap = Math.abs(row.value - diff);
+    if (gap < bestGap) {
+      best = row.value;
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+
+/** Remaining calendar days until expiry (negative if expired). */
+export function daysUntilExpiry(expiryDate, fromDate = today()) {
+  const end = parseIsoDateOnly(expiryDate);
+  const start = parseIsoDateOnly(fromDate) || parseIsoDateOnly(today());
+  if (!end || !start) return null;
+  return Math.round((end.getTime() - start.getTime()) / 86400000);
+}
+
+export function expiryBadgeInfo(expiryDate) {
+  const days = daysUntilExpiry(expiryDate);
+  if (days == null) return { tone: "mute", label: "" };
+  if (days < 0) return { tone: "bad", label: "Expired" };
+  if (days === 0) return { tone: "bad", label: "Expires today" };
+  if (days === 1) return { tone: "warn", label: "Expires in 1 day" };
+  if (days <= 30) return { tone: "warn", label: `Expires in ${days} days` };
+  return { tone: "good", label: `Expires in ${days} days` };
+}
+
 export function tripLabel(trip) {
   if (!trip) return "—";
   return `${trip.source || "?"} → ${trip.destination || "?"}`;
