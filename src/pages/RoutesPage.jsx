@@ -57,7 +57,30 @@ function linkedBiltyLabels(trip, biltyMap) {
 }
 
 function BiltyMultiSelect({ options, value, onChange, disabled = false }) {
+  const [search, setSearch] = useState("");
   const selected = new Set((value || []).map(String));
+  const byId = useMemo(
+    () => new Map((options || []).map((row) => [String(row.id), row])),
+    [options]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const rows = options || [];
+    if (!q) return rows;
+    return rows.filter((row) => {
+      const hay = [
+        row.bilty_number,
+        row.status,
+        row.pickup_location,
+        row.drop_location,
+        row.consignor,
+        row.consignee,
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [options, search]);
+
   const toggle = (id) => {
     if (disabled) return;
     const next = new Set(selected);
@@ -66,24 +89,83 @@ function BiltyMultiSelect({ options, value, onChange, disabled = false }) {
     onChange([...next]);
   };
 
+  const clearAll = () => {
+    if (disabled) return;
+    onChange([]);
+  };
+
   return (
-    <div className="bilty-multi">
-      {(options || []).length ? options.map((row) => (
-        <label key={row.id} className={`bilty-multi-item${selected.has(String(row.id)) ? " active" : ""}`}>
+    <div className="bilty-picker">
+      <div className="bilty-picker-toolbar">
+        <div className="bilty-picker-search">
+          <Icon name="search" size={14} />
           <input
-            type="checkbox"
-            checked={selected.has(String(row.id))}
+            type="search"
+            value={search}
             disabled={disabled}
-            onChange={() => toggle(row.id)}
+            placeholder="Search bilty no / route / party"
+            onChange={(event) => setSearch(event.target.value)}
           />
-          <span>
-            <strong>{row.bilty_number}</strong>
-            <small>
-              {[row.pickup_location, row.drop_location].filter(Boolean).join(" → ") || row.status || "Bilty"}
-            </small>
-          </span>
-        </label>
-      )) : <p className="muted">No bilties available</p>}
+        </div>
+        <span className="bilty-picker-count">
+          {selected.size ? `${selected.size} selected` : "None selected"}
+        </span>
+        {selected.size ? (
+          <button type="button" className="btn btn-ghost table-action" disabled={disabled} onClick={clearAll}>
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      {selected.size ? (
+        <div className="bilty-picker-chips">
+          {[...selected].map((id) => {
+            const row = byId.get(String(id));
+            return (
+              <button
+                key={id}
+                type="button"
+                className="bilty-picker-chip"
+                disabled={disabled}
+                onClick={() => toggle(id)}
+                title="Remove"
+              >
+                {row?.bilty_number || `#${id}`}
+                <span aria-hidden="true">×</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="bilty-picker-empty muted">Select one or more bilties for part load</p>
+      )}
+
+      <div className="bilty-picker-list" role="listbox" aria-multiselectable="true">
+        {filtered.length ? filtered.map((row) => {
+          const active = selected.has(String(row.id));
+          const route = [row.pickup_location, row.drop_location].filter(Boolean).join(" → ");
+          return (
+            <button
+              key={row.id}
+              type="button"
+              role="option"
+              aria-selected={active}
+              disabled={disabled}
+              className={`bilty-picker-row${active ? " active" : ""}`}
+              onClick={() => toggle(row.id)}
+            >
+              <span className={`bilty-picker-check${active ? " on" : ""}`} aria-hidden="true" />
+              <span className="bilty-picker-copy">
+                <strong>{row.bilty_number}</strong>
+                <small>{route || "No route yet"}</small>
+              </span>
+              <StatusPill value={row.status} />
+            </button>
+          );
+        }) : (
+          <p className="muted pad">No bilties match “{search.trim()}”.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -195,12 +277,16 @@ function TripForm({ options, onClose, onCreated, initial = null }) {
           ))}
         </Select>
       </Field>
-      <Field label="Bilties" hint="Part load — select one or more" className="span-2">
+      <div className="span-2 bilty-picker-field">
+        <div className="bilty-picker-label">
+          <span>Bilties</span>
+          <small>Part load — tap rows to link</small>
+        </div>
         <BiltyMultiSelect options={options.bilties} value={form.bilty_ids} onChange={setBilties} />
-      </Field>
-      {form.bilty_ids.length ? (
-        <p className="form-hint span-2">Linked bilties → status hint <strong>BILTY_LINKED</strong></p>
-      ) : null}
+        {form.bilty_ids.length ? (
+          <p className="field-hint">Linked → status hint <strong>BILTY_LINKED</strong></p>
+        ) : null}
+      </div>
       <Field label="Status" hint="Default DRAFT · becomes BILTY_LINKED when bilties linked">
         <Select value={form.status} onChange={set("status")}>
           {STATUSES.map((status) => (

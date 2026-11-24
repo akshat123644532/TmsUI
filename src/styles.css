@@ -1913,48 +1913,188 @@ td .pill {
   margin-left: auto;
 }
 
-.bilty-multi {
+.bilty-picker-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 220px;
-  overflow: auto;
-  padding: 8px;
+}
+
+.bilty-picker-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--field);
+}
+
+.bilty-picker-label small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bilty-picker {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--card-2, rgba(255, 255, 255, 0.02));
+  overflow: hidden;
 }
 
-.bilty-multi-item {
+.bilty-picker-toolbar {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid transparent;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.bilty-picker-search {
+  position: relative;
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+
+.bilty-picker-search svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.bilty-picker-search input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--input);
+  padding: 8px 12px 8px 32px;
+  outline: none;
+}
+
+.bilty-picker-search input:focus {
+  border-color: rgba(240, 180, 41, 0.75);
+  box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.14);
+}
+
+.bilty-picker-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bilty-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 10px 0;
+}
+
+.bilty-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(240, 180, 41, 0.35);
+  background: rgba(240, 180, 41, 0.12);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.bilty-multi-item.active {
+.bilty-picker-chip span {
+  opacity: 0.7;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bilty-picker-empty {
+  margin: 0;
+  padding: 10px 12px 0;
+  font-size: 12px;
+}
+
+.bilty-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 168px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.bilty-picker-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.bilty-picker-row:hover {
+  background: var(--row-hover, rgba(255, 255, 255, 0.04));
+}
+
+.bilty-picker-row.active {
   border-color: rgba(240, 180, 41, 0.35);
   background: rgba(240, 180, 41, 0.1);
 }
 
-.bilty-multi-item span {
+.bilty-picker-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid var(--line);
+  background: var(--input, transparent);
+  flex: 0 0 auto;
+}
+
+.bilty-picker-check.on {
+  border-color: rgba(240, 180, 41, 0.8);
+  background:
+    linear-gradient(180deg, #ffc85a, #f0a31c);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.bilty-picker-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.bilty-multi-item small {
+.bilty-picker-copy strong {
+  font-size: 13px;
+}
+
+.bilty-picker-copy small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .trip-bilty-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Prevent Field-wide input rules from stretching checkboxes inside trip forms */
+.bilty-picker input[type="checkbox"],
+.bilty-picker input[type="search"] {
+  width: auto;
 }
 
 .bilty-section {
