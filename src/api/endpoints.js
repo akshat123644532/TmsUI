@@ -48,10 +48,18 @@ export const endpoints = {
   biltySequence: "/api/bilties/sequence",
   biltyPrepareForm: "/api/bilties/prepare-form",
   trips: "/api/trips",
+  trip: (id) => `/api/trips/${id}`,
+
+  tripDocuments: "/api/trip-documents",
+  tripDocument: (id) => `/api/trip-documents/${id}`,
 
   tripExpenses: "/api/trip-expenses",
   tripExpense: (id) => `/api/trip-expenses/${id}`,
   tripExpenseStatus: (id) => `/api/trip-expenses/${id}/status`,
+  tripExpenseTypes: "/api/trip-expenses/types",
+  tripExpenseType: (id) => `/api/trip-expenses/types/${id}`,
+
+  mobileExpenses: "/api/mobile/expenses",
 
   tripAdvances: "/api/trip-advances",
   tripAdvance: (id) => `/api/trip-advances/${id}`,

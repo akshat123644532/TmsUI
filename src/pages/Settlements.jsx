@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { api, fetchAll } from "../api";
+import { endpoints } from "../api/endpoints";
 import {
   Banner,
   DataTable,
+  DetailList,
   Field,
   FormActions,
   FormLegend,
@@ -12,6 +14,7 @@ import {
   SearchField,
   Select,
   StatusNext,
+  ViewButton,
 } from "../components/ui";
 import {
   blankIssues,
@@ -41,7 +44,7 @@ function SettlementForm({ trips, onClose, onCreated }) {
     setBusy(true);
     setError("");
     try {
-      await api("/api/trip-settlements", {
+      await api(endpoints.tripSettlements, {
         method: "POST",
         body: {
           trip_id: form.trip_id,
@@ -77,7 +80,7 @@ function SettlementForm({ trips, onClose, onCreated }) {
         <input value={form.remarks} onChange={(event) => setForm({ ...form, remarks: event.target.value })} />
       </Field>
       <p className="form-hint span-2">
-        Balance = Advance + Carry-Forward − Approved Expenses. Only trip_id is required; total advance, total expenses and balance are calculated from approved advances &amp; expenses. Status defaults to PENDING.
+        Balance = Advance + Carry-Forward − Approved Expenses. Settled / carry-forward records show verified_by and verified_at. No delete — Cancel via trip/expense flows only.
       </p>
       {error ? <p className="form-error span-2">{error}</p> : null}
       <FormActions onCancel={onClose} busy={busy} submitLabel="Create settlement" />
@@ -85,15 +88,47 @@ function SettlementForm({ trips, onClose, onCreated }) {
   );
 }
 
+function verifierLabel(row) {
+  return row.verified_by_name
+    || row.verifier_name
+    || (row.verified_by != null ? `User #${row.verified_by}` : "—");
+}
+
+function SettlementDetail({ row, onClose }) {
+  const showVerifier = ["SETTLED", "CARRY_FORWARD"].includes(String(row.status || "").toUpperCase());
+  return (
+    <div className="stack">
+      <DetailList rows={[
+        ["Trip", row.trip_name],
+        ["Status", row.status],
+        ["Advance", money(row.total_advance)],
+        ["Carry-forward", money(row.carry_forward_amount)],
+        ["Approved expenses", money(row.total_expenses)],
+        ["Closing balance", money(row.balance_amount)],
+        ["Settled at", formatDate(row.settled_at)],
+        ["Remarks", row.remarks || "—"],
+        ...(showVerifier ? [
+          ["Verified by", verifierLabel(row)],
+          ["Verified at", formatDate(row.verified_at)],
+        ] : []),
+      ]} />
+      <div className="page-actions bilty-detail-actions">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Settlements() {
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
   const [actionError, setActionError] = useState("");
   const { data, loading, error, reload } = useResource(async () => {
     const [settlements, trips] = await Promise.all([
-      fetchAll("/api/trip-settlements", "settlements"),
-      fetchAll("/api/trips", "trips"),
+      fetchAll(endpoints.tripSettlements, "settlements"),
+      fetchAll(endpoints.trips, "trips"),
     ]);
     return {
       settlements: settlements.rows,
@@ -108,7 +143,7 @@ export default function Settlements() {
   const filtered = useMemo(
     () => (data?.settlements || [])
       .map((row) => ({ ...row, trip_name: tripNames.get(String(row.trip_id)) || `#${row.trip_id}` }))
-      .filter((row) => includesQuery(row, query, ["trip_name", "status", "remarks"])),
+      .filter((row) => includesQuery(row, query, ["trip_name", "status", "remarks", "verified_by_name", "verifier_name"])),
     [data, query, tripNames]
   );
   const pager = usePaged(filtered);
@@ -116,17 +151,37 @@ export default function Settlements() {
   const patch = async (row, status) => {
     setActionError("");
     try {
-      await api(`/api/trip-settlements/${row.id}/status`, { method: "PATCH", body: { status } });
+      await api(endpoints.tripSettlementStatus(row.id), { method: "PATCH", body: { status } });
       toast("Settlement updated");
+      const refreshed = await api(endpoints.tripSettlement(row.id)).catch(() => null);
+      const next = refreshed?.settlement || refreshed || { ...row, status };
       reload();
+      if (detail?.id === row.id) {
+        setDetail({
+          ...row,
+          ...next,
+          trip_name: row.trip_name,
+          status: next.status || status,
+        });
+      }
     } catch (err) {
       setActionError(err.message);
     }
   };
 
+  const openDetail = async (row) => {
+    try {
+      const data = await api(endpoints.tripSettlement(row.id));
+      const next = data.settlement || data;
+      setDetail({ ...row, ...next, trip_name: row.trip_name });
+    } catch {
+      setDetail(row);
+    }
+  };
+
   return (
     <section>
-      <PageHeader title="Trip Settlement" subtitle="Advance + Carry-Forward − Approved Expenses = Balance. Settle or carry the balance forward.">
+      <PageHeader title="Trip Settlement" subtitle="Advance + Carry-Forward − Approved Expenses = Balance. Verifier shown after settle / carry-forward.">
         <button className="btn btn-primary" type="button" onClick={() => setOpen(true)}>
           New Settlement
         </button>
@@ -149,6 +204,20 @@ export default function Settlements() {
               { key: "expenses", label: "Approved expenses", align: "right", render: (row) => money(row.total_expenses) },
               { key: "balance", label: "Closing balance", align: "right", render: (row) => money(row.balance_amount) },
               { key: "settled", label: "Settled at", render: (row) => formatDate(row.settled_at) },
+              {
+                key: "verifier",
+                label: "Verified by",
+                render: (row) => (["SETTLED", "CARRY_FORWARD"].includes(String(row.status || "").toUpperCase())
+                  ? verifierLabel(row)
+                  : "—"),
+              },
+              {
+                key: "verified_at",
+                label: "Verified at",
+                render: (row) => (["SETTLED", "CARRY_FORWARD"].includes(String(row.status || "").toUpperCase())
+                  ? formatDate(row.verified_at)
+                  : "—"),
+              },
               { key: "remarks", label: "Remarks", render: (row) => row.remarks || "—" },
               {
                 key: "status",
@@ -161,6 +230,7 @@ export default function Settlements() {
                   />
                 ),
               },
+              { key: "actions", label: "", render: (row) => <ViewButton onClick={() => openDetail(row)} /> },
             ]}
           />
         )}
@@ -173,6 +243,11 @@ export default function Settlements() {
             onClose={() => setOpen(false)}
             onCreated={() => { setOpen(false); toast("Settlement created"); reload(); }}
           />
+        </Modal>
+      ) : null}
+      {detail ? (
+        <Modal title={`Settlement · ${detail.trip_name}`} onClose={() => setDetail(null)}>
+          <SettlementDetail row={detail} onClose={() => setDetail(null)} />
         </Modal>
       ) : null}
     </section>

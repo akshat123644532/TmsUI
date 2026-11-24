@@ -1913,6 +1913,50 @@ td .pill {
   margin-left: auto;
 }
 
+.bilty-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card-2, rgba(255, 255, 255, 0.02));
+}
+
+.bilty-multi-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.bilty-multi-item.active {
+  border-color: rgba(240, 180, 41, 0.35);
+  background: rgba(240, 180, 41, 0.1);
+}
+
+.bilty-multi-item span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bilty-multi-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trip-bilty-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .bilty-section {
   border: 1px solid var(--line);
   border-radius: 16px;
