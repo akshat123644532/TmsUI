@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, fetchAll, openApiFile } from "../api";
+import { api, fetchAll, openApiFile, pickList } from "../api";
 import { endpoints } from "../api/endpoints";
 import { Icon } from "../components/Icons";
 import {
@@ -325,7 +325,7 @@ function TripDocsPanel({ tripId, toast }) {
     setError("");
     try {
       const data = await api(`${endpoints.tripDocuments}?trip_id=${tripId}&limit=100`);
-      setDocs(data.documents || data.rows || []);
+      setDocs(pickList(data, "documents", "tripDocuments", "trip_documents", "rows"));
     } catch (err) {
       setError(err.message);
       setDocs([]);

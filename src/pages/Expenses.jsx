@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, fetchAll } from "../api";
+import { api, fetchAll, pickList } from "../api";
 import { endpoints } from "../api/endpoints";
 import { useAuth } from "../auth";
 import { Icon } from "../components/Icons";
@@ -34,7 +34,14 @@ import {
 } from "../lib";
 import { useToast } from "../toast";
 
+function permissionMessage(err) {
+  const message = String(err?.message || "");
+  if (/\b403\b|forbidden|permission/i.test(message)) return "No Trip Expenses permission";
+  return message || "Could not load expense types";
+}
+
 function useExpenseTypes() {
+  const toast = useToast();
   const [types, setTypes] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -43,12 +50,19 @@ function useExpenseTypes() {
     setLoading(true);
     try {
       const data = await api(endpoints.tripExpenseTypes);
-      const rows = data.types || data.expense_types || data.rows || [];
+      // API: { success, expenseTypes: [{ id, name, code, status }] }
+      const rows = pickList(data, "expenseTypes", "expense_types", "types", "rows")
+        .filter((row) => row && Number(row.status ?? 1) !== 0);
       setTypes(rows);
       setError("");
+      if (!rows.length) {
+        toast("No expense types returned");
+      }
     } catch (err) {
-      setError(err.message);
+      const message = permissionMessage(err);
+      setError(message);
       setTypes([]);
+      toast(message);
     } finally {
       setLoading(false);
     }
@@ -66,11 +80,32 @@ function typeValue(row) {
 }
 
 function typeLabel(row) {
-  if (row.name && row.code && row.name !== row.code) return `${row.name} (${row.code})`;
   return row.name || row.code || `#${row.id}`;
 }
 
-function ExpenseForm({ trips, types, onClose, onCreated }) {
+function ExpenseTypeSelect({ value, onChange, types, loading, error, onRetry, issuesError }) {
+  return (
+    <Field label="Expense type" required error={issuesError || (!loading && error ? error : "")}>
+      {loading ? (
+        <p className="form-hint" style={{ margin: 0 }}>Loading types…</p>
+      ) : (
+        <Select value={value} onChange={onChange} disabled={!types.length}>
+          <option value="">{types.length ? "Select type" : "No types available"}</option>
+          {types.map((row) => (
+            <option key={row.id || typeValue(row)} value={typeValue(row)}>{typeLabel(row)}</option>
+          ))}
+        </Select>
+      )}
+      {!loading && error ? (
+        <button type="button" className="btn btn-ghost table-action" onClick={onRetry} style={{ marginTop: 6 }}>
+          Retry types
+        </button>
+      ) : null}
+    </Field>
+  );
+}
+
+function ExpenseForm({ trips, types, typesLoading, typesError, onRetryTypes, onClose, onCreated }) {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
@@ -124,7 +159,7 @@ function ExpenseForm({ trips, types, onClose, onCreated }) {
         await api(endpoints.tripExpenses, {
           method: "POST",
           body: {
-            trip_id: form.trip_id,
+            trip_id: Number(form.trip_id) || form.trip_id,
             expense_type: form.expense_type,
             requested_amount: num(form.requested_amount),
             remarks: form.remarks.trim() || null,
@@ -150,14 +185,15 @@ function ExpenseForm({ trips, types, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Expense type" required error={issues.expense_type} hint="From company expense types">
-        <Select value={form.expense_type} onChange={set("expense_type")}>
-          <option value="">Select type</option>
-          {types.map((row) => (
-            <option key={row.id || typeValue(row)} value={typeValue(row)}>{typeLabel(row)}</option>
-          ))}
-        </Select>
-      </Field>
+      <ExpenseTypeSelect
+        value={form.expense_type}
+        onChange={set("expense_type")}
+        types={types}
+        loading={typesLoading}
+        error={typesError}
+        onRetry={onRetryTypes}
+        issuesError={issues.expense_type}
+      />
       <Field label="Requested amount" required error={issues.requested_amount}>
         <input type="number" min="0.01" step="0.01" value={form.requested_amount} onChange={set("requested_amount")} />
       </Field>
@@ -174,7 +210,7 @@ function ExpenseForm({ trips, types, onClose, onCreated }) {
   );
 }
 
-function MobileExpenseForm({ trips, types, onClose, onCreated }) {
+function MobileExpenseForm({ trips, types, typesLoading, typesError, onRetryTypes, onClose, onCreated }) {
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
@@ -239,14 +275,15 @@ function MobileExpenseForm({ trips, types, onClose, onCreated }) {
           ))}
         </Select>
       </Field>
-      <Field label="Expense type" required error={issues.expense_type}>
-        <Select value={form.expense_type} onChange={set("expense_type")}>
-          <option value="">Select type</option>
-          {types.map((row) => (
-            <option key={row.id || typeValue(row)} value={typeValue(row)}>{typeLabel(row)}</option>
-          ))}
-        </Select>
-      </Field>
+      <ExpenseTypeSelect
+        value={form.expense_type}
+        onChange={set("expense_type")}
+        types={types}
+        loading={typesLoading}
+        error={typesError}
+        onRetry={onRetryTypes}
+        issuesError={issues.expense_type}
+      />
       <Field label="Amount" required error={issues.amount}>
         <input type="number" min="0.01" step="0.01" value={form.amount} onChange={set("amount")} />
       </Field>
@@ -613,6 +650,9 @@ export default function Expenses() {
           <ExpenseForm
             trips={data.trips}
             types={typeState.types}
+            typesLoading={typeState.loading}
+            typesError={typeState.error}
+            onRetryTypes={typeState.reload}
             onClose={() => setModal("")}
             onCreated={() => { setModal(""); toast("Expense added"); reload(); }}
           />
@@ -628,6 +668,9 @@ export default function Expenses() {
           <MobileExpenseForm
             trips={data.trips}
             types={typeState.types}
+            typesLoading={typeState.loading}
+            typesError={typeState.error}
+            onRetryTypes={typeState.reload}
             onClose={() => setModal("")}
             onCreated={() => { setModal(""); toast("Mobile expense submitted"); reload(); }}
           />

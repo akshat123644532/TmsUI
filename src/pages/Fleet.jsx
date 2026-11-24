@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, fetchAll, openApiFile } from "../api";
+import { api, fetchAll, openApiFile, pickList } from "../api";
 import { endpoints } from "../api/endpoints";
 import { Icon } from "../components/Icons";
 import {
@@ -267,7 +267,7 @@ function VehicleDocsPanel({ vehicle, onClose, toast }) {
     setError("");
     try {
       const data = await api(`${endpoints.vehicleDocumentsFor(vehicle.id)}?limit=100`);
-      setDocs(data.documents || []);
+      setDocs(pickList(data, "documents", "vehicleDocuments", "vehicle_documents", "rows"));
     } catch (err) {
       setError(err.message);
       setDocs([]);
@@ -680,12 +680,12 @@ function VehicleAssignmentsPanel({
         const data = await api(
           `${endpoints.vehicleAssignmentHistory}?vehicle_id=${vehicle.id}&limit=100`
         );
-        setRows(data.history || data.assignments || []);
+        setRows(pickList(data, "history", "assignments", "vehicleAssignments", "rows"));
       } else {
         const data = await api(
           `${endpoints.vehicleAssignments}?vehicle_id=${vehicle.id}&status=1&limit=100`
         );
-        setRows(data.assignments || []);
+        setRows(pickList(data, "assignments", "vehicleAssignments", "history", "rows"));
       }
     } catch (err) {
       setError(err.message || "Could not load assignments");

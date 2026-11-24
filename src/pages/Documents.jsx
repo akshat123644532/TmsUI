@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { api, fetchAll, openApiFile } from "../api";
+import { api, fetchAll, openApiFile, pickList } from "../api";
 import { endpoints } from "../api/endpoints";
 import { Icon } from "../components/Icons";
 import {
@@ -39,7 +39,7 @@ async function loadOwnedDocs(people, path, label) {
     people.slice(0, 40).map(async (person) => {
       try {
         const data = await api(`${path}/${person.id}?limit=50`);
-        return (data.documents || []).map((doc) => ({
+        return pickList(data, "documents", "driverDocuments", "helperDocuments", "rows").map((doc) => ({
           ...doc,
           owner: person.name || person.registration_no,
           ownerKind: label,

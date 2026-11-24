@@ -170,6 +170,24 @@ export async function openApiFile(url) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
+/** Pick first array found on an API payload (camelCase / snake_case / rows). */
+export function pickList(data, ...keys) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
+  for (const key of keys) {
+    if (Array.isArray(data[key])) return data[key];
+  }
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.rows)) return data.rows;
+  return [];
+}
+
+function listKeyVariants(listKey) {
+  if (!listKey) return [];
+  const snake = String(listKey).replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`);
+  return [...new Set([listKey, snake])];
+}
+
 export async function fetchAll(path, listKey, maxPages = 10) {
   const rows = [];
   let total = 0;
@@ -177,7 +195,7 @@ export async function fetchAll(path, listKey, maxPages = 10) {
   for (let page = 1; page <= maxPages; page += 1) {
     const joiner = path.includes("?") ? "&" : "?";
     const data = await api(`${path}${joiner}page=${page}&limit=100`);
-    const chunk = data[listKey] || data.data || data.rows || [];
+    const chunk = pickList(data, ...listKeyVariants(listKey));
     total = Number(data.pagination?.total ?? data.total ?? rows.length + chunk.length);
     rows.push(...chunk);
 

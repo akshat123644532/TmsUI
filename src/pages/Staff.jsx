@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, fetchAll } from "../api";
+import { api, fetchAll, pickList } from "../api";
 import { endpoints } from "../api/endpoints";
 import {
   Banner,
@@ -40,7 +40,7 @@ function StaffAssignmentHistory({ kind, personId }) {
     api(`${endpoints.vehicleAssignmentHistory}?${query}&limit=100`)
       .then((data) => {
         if (!live) return;
-        setRows(data.history || data.assignments || []);
+        setRows(pickList(data, "history", "assignments", "vehicleAssignments", "rows"));
       })
       .catch((err) => {
         if (!live) return;
