@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./auth";
 import { ThemeProvider } from "./theme";
 import { ToastProvider } from "./toast";
 import Shell from "./components/Shell";
+import MobileShell from "./components/MobileShell";
 import Login from "./pages/Login";
 import SelectCompany from "./pages/SelectCompany";
 import Companies from "./pages/Companies";
@@ -21,18 +22,36 @@ import Payments from "./pages/Payments";
 import Reports from "./pages/Reports";
 import Access from "./pages/Access";
 import Audit from "./pages/Audit";
+import { MobileTripDetail, MobileTripsList } from "./pages/MobileTrips";
 import { Banner, PageHeader } from "./components/ui";
+import { homePathForUser, isMobileCrewRole } from "./lib";
 
 function Guest({ children }) {
-  const { authed, needsCompanySelection } = useAuth();
+  const { authed, needsCompanySelection, user } = useAuth();
   if (authed && needsCompanySelection) return <Navigate to="/select-company" replace />;
+  if (authed && isMobileCrewRole(user?.user_type)) return <Navigate to="/mobile/trips" replace />;
   if (authed) return <Navigate to="/" replace />;
   return children;
 }
 
-function Private() {
-  const { authed, needsCompanySelection, missingCompany } = useAuth();
+/** Driver / Helper — mobile field app only. */
+function PrivateMobile() {
+  const { authed, user } = useAuth();
   if (!authed) return <Navigate to="/login" replace />;
+  // Admin users are not locked to mobile-only routes on a shared domain.
+  if (!isMobileCrewRole(user?.user_type)) {
+    return <Navigate to="/" replace />;
+  }
+  return <MobileShell />;
+}
+
+/** Desk Admin Web — never mount for DRIVER / HELPER (avoids /api/drivers etc.). */
+function PrivateDesk() {
+  const { authed, needsCompanySelection, missingCompany, user } = useAuth();
+  if (!authed) return <Navigate to="/login" replace />;
+  if (isMobileCrewRole(user?.user_type)) {
+    return <Navigate to="/mobile/trips" replace state={{ notice: "Admin modules not available for Driver/Helper" }} />;
+  }
   if (needsCompanySelection) return <Navigate to="/select-company" replace />;
   if (missingCompany) {
     return (
@@ -49,6 +68,12 @@ function Private() {
   return <Shell />;
 }
 
+function CatchAll() {
+  const { authed, user } = useAuth();
+  if (!authed) return <Navigate to="/login" replace />;
+  return <Navigate to={homePathForUser(user?.user_type)} replace />;
+}
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -59,7 +84,14 @@ export default function App() {
               <Route path="/login" element={<Guest><Login /></Guest>} />
               <Route path="/signup" element={<Navigate to="/login" replace />} />
               <Route path="/select-company" element={<SelectCompany />} />
-              <Route element={<Private />}>
+
+              <Route element={<PrivateMobile />}>
+                <Route path="/mobile" element={<Navigate to="/mobile/trips" replace />} />
+                <Route path="/mobile/trips" element={<MobileTripsList />} />
+                <Route path="/mobile/trips/:id" element={<MobileTripDetail />} />
+              </Route>
+
+              <Route element={<PrivateDesk />}>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/companies" element={<Companies />} />
                 <Route path="/users" element={<Users />} />
@@ -78,7 +110,8 @@ export default function App() {
                 <Route path="/documents" element={<Documents />} />
                 <Route path="/outlook" element={<Navigate to="/routes?tab=board" replace />} />
               </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
+
+              <Route path="*" element={<CatchAll />} />
             </Routes>
           </BrowserRouter>
         </ToastProvider>

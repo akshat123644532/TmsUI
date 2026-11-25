@@ -2938,3 +2938,140 @@ td .pill {
     page-break-after: always;
   }
 }
+
+/* Driver / Helper field app */
+.mobile-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 480px at 10% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%),
+    var(--bg);
+  color: var(--text);
+}
+
+.mobile-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mobile-brand small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 52vw;
+}
+
+.mobile-main {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.mobile-page-head h1 {
+  margin: 4px 0 0;
+  font-size: 1.55rem;
+  letter-spacing: -0.02em;
+}
+
+.mobile-empty {
+  display: grid;
+  gap: 8px;
+  padding: 28px 18px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  text-align: center;
+}
+
+.mobile-trip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-trip-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.mobile-trip-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  transform: translateY(-1px);
+}
+
+.mobile-trip-card strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.mobile-trip-card small {
+  color: var(--muted);
+}
+
+.mobile-detail-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.mobile-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mobile-detail-row > span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.mobile-expense-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.mobile-expense-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.mobile-expense-form {
+  margin: 0;
+}

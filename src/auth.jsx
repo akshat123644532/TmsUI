@@ -11,7 +11,7 @@ import {
   setSession,
 } from "./api";
 import { endpoints } from "./api/endpoints";
-import { isSuperAdminRole, normalizeRole } from "./lib";
+import { isMobileCrewRole, isSuperAdminRole, normalizeRole } from "./lib";
 
 const AuthContext = createContext(null);
 
@@ -241,6 +241,8 @@ export function AuthProvider({ children }) {
   const missingCompany = useMemo(() => {
     if (!authed || !user) return false;
     if (isSuperAdminRole(user.user_type)) return false;
+    // Driver/Helper use mobile shell; do not block on desk company assignment UI.
+    if (isMobileCrewRole(user.user_type)) return false;
     return !user.company_id && !company?.id;
   }, [authed, user, company]);
 

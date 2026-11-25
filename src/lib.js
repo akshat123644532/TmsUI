@@ -51,11 +51,31 @@ export function isSuperAdminRole(type) {
   return normalizeRole(type) === "SUPER_ADMIN";
 }
 
+/** Driver / Helper — mobile app only, never Admin Web shell. */
+export function isMobileCrewRole(type) {
+  return ["DRIVER", "HELPER"].includes(normalizeRole(type));
+}
+
+export function isDriverRole(type) {
+  return normalizeRole(type) === "DRIVER";
+}
+
+export function isHelperRole(type) {
+  return normalizeRole(type) === "HELPER";
+}
+
+export function homePathForUser(type) {
+  if (isMobileCrewRole(type)) return "/mobile/trips";
+  return "/";
+}
+
 export function roleLabel(type) {
   const normalized = normalizeRole(type);
   if (normalized === "SUPER_ADMIN") return "System Administrator";
   if (normalized === "COMPANY_ADMIN") return "Company Administrator";
   if (normalized === "COMPANY_USER") return "Company User";
+  if (normalized === "DRIVER") return "Driver";
+  if (normalized === "HELPER") return "Helper";
   return String(type || "User")
     .replaceAll("_", " ")
     .toLowerCase()

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { Icon } from "../components/Icons";
-import { isSuperAdminRole } from "../lib";
+import { homePathForUser, isMobileCrewRole, isSuperAdminRole } from "../lib";
 import { useTheme } from "../theme";
 
 export default function Login() {
@@ -21,7 +21,7 @@ export default function Login() {
   const submit = async (event) => {
     event.preventDefault();
     const nextIssues = {};
-    if (!email.trim()) nextIssues.email = "Enter your email";
+    if (!email.trim()) nextIssues.email = "Enter your email or mobile";
     if (!password) nextIssues.password = "Enter your password";
     setIssues(nextIssues);
     if (nextIssues.email || nextIssues.password) return;
@@ -31,8 +31,13 @@ export default function Login() {
 
     try {
       const nextUser = await login(email.trim(), password);
-      // Super Admin must pick (or auto-pick) a company before the desk opens.
-      navigate(isSuperAdminRole(nextUser?.user_type) ? "/select-company" : "/", { replace: true });
+      if (isMobileCrewRole(nextUser?.user_type)) {
+        navigate("/mobile/trips", { replace: true });
+      } else if (isSuperAdminRole(nextUser?.user_type)) {
+        navigate("/select-company", { replace: true });
+      } else {
+        navigate(homePathForUser(nextUser?.user_type), { replace: true });
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -87,15 +92,15 @@ export default function Login() {
           </div>
 
           <label className={`field${issues.email ? " invalid" : ""}`}>
-            <span>Email</span>
+            <span>Email or mobile</span>
             <input
-              type="email"
+              type="text"
               value={email}
               onChange={(event) => {
                 setEmail(event.target.value);
                 setIssues((current) => ({ ...current, email: "" }));
               }}
-              placeholder="you@company.com"
+              placeholder="you@company.com or 9876543210"
               autoComplete="username"
             />
             {issues.email ? <small className="field-error">{issues.email}</small> : null}

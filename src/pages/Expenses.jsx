@@ -251,6 +251,7 @@ function MobileExpenseForm({ trips, types, typesLoading, typesError, onRetryType
       const fd = new FormData();
       fd.append("trip_id", form.trip_id);
       fd.append("expense_type", form.expense_type);
+      fd.append("requested_amount", String(num(form.amount)));
       fd.append("amount", String(num(form.amount)));
       if (form.remarks.trim()) fd.append("remarks", form.remarks.trim());
       fd.append("file", file);

@@ -59,6 +59,8 @@ export const endpoints = {
   tripExpenseTypes: "/api/trip-expenses/types",
   tripExpenseType: (id) => `/api/trip-expenses/types/${id}`,
 
+  mobileTrips: "/api/mobile/trips",
+  mobileTrip: (id) => `/api/mobile/trips/${id}`,
   mobileExpenses: "/api/mobile/expenses",
 
   tripAdvances: "/api/trip-advances",

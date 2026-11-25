@@ -152,13 +152,13 @@ export function StatusNext({ value, next = [], onChange }) {
   );
 }
 
-export function FormActions({ onCancel, busy, submitLabel = "Save" }) {
+export function FormActions({ onCancel, busy, submitLabel = "Save", submitDisabled = false }) {
   return (
     <div className="form-actions">
       <button className="btn btn-ghost" type="button" onClick={onCancel}>
         Cancel
       </button>
-      <button className="btn btn-primary" type="submit" disabled={busy}>
+      <button className="btn btn-primary" type="submit" disabled={busy || submitDisabled}>
         {busy ? "Saving..." : submitLabel}
       </button>
     </div>
