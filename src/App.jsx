@@ -5,6 +5,7 @@ import { ToastProvider } from "./toast";
 import Shell from "./components/Shell";
 import MobileShell from "./components/MobileShell";
 import Login from "./pages/Login";
+import FieldLogin from "./pages/FieldLogin";
 import ForgotPassword from "./pages/ForgotPassword";
 import SelectCompany from "./pages/SelectCompany";
 import Companies from "./pages/Companies";
@@ -40,7 +41,7 @@ function Guest({ children }) {
 /** Driver / Helper — mobile field app only. */
 function PrivateMobile() {
   const { authed, user } = useAuth();
-  if (!authed) return <Navigate to="/login" replace />;
+  if (!authed) return <Navigate to="/field" replace />;
   // Admin users are not locked to mobile-only routes on a shared domain.
   if (!isMobileCrewRole(user?.user_type)) {
     return <Navigate to="/" replace />;
@@ -85,6 +86,7 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Guest><Login /></Guest>} />
+              <Route path="/field" element={<Guest><FieldLogin /></Guest>} />
               <Route path="/forgot-password" element={<Guest><ForgotPassword /></Guest>} />
               <Route path="/signup" element={<Navigate to="/login" replace />} />
               <Route path="/select-company" element={<SelectCompany />} />

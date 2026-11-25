@@ -3152,3 +3152,19 @@ td .pill {
 .login-footer-link a {
   color: inherit;
 }
+
+.field-login-screen {
+  background:
+    radial-gradient(900px 420px at 80% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 55%),
+    radial-gradient(700px 360px at 0% 100%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 50%),
+    var(--bg);
+}
+
+.field-login-card .brand-name span {
+  color: var(--accent);
+}
+
+.field-login-card h1 {
+  font-size: 1.7rem;
+  letter-spacing: -0.03em;
+}

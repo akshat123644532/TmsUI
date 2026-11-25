@@ -77,9 +77,9 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="login-screen">
+            <div className="login-screen field-login-screen">
       <div className="login-card-wrap">
-        <form className="login-card" onSubmit={submit} noValidate>
+        <form className="login-card field-login-card" onSubmit={submit} noValidate>
           <div className="login-card-top">
             <div className="brand-lockup">
               <span className="brand-mark">
@@ -165,7 +165,7 @@ export default function ForgotPassword() {
             {busy ? "Saving..." : "Reset password"}
           </button>
           <p className="login-footer-link">
-            <Link to="/login">Back to sign in</Link>
+            <Link to="/field">Back to Field sign in</Link>
           </p>
         </form>
       </div>

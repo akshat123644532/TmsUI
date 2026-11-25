@@ -20,7 +20,7 @@ export default function MobileShell() {
 
   const signOut = async () => {
     await logout();
-    navigate("/login", { replace: true });
+    navigate("/field", { replace: true });
   };
 
   return (
