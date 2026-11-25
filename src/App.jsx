@@ -5,6 +5,7 @@ import { ToastProvider } from "./toast";
 import Shell from "./components/Shell";
 import MobileShell from "./components/MobileShell";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
 import SelectCompany from "./pages/SelectCompany";
 import Companies from "./pages/Companies";
 import Dashboard from "./pages/Dashboard";
@@ -23,6 +24,8 @@ import Reports from "./pages/Reports";
 import Access from "./pages/Access";
 import Audit from "./pages/Audit";
 import { MobileTripDetail, MobileTripsList } from "./pages/MobileTrips";
+import MobileVehicle from "./pages/MobileVehicle";
+import MobileProfile from "./pages/MobileProfile";
 import { Banner, PageHeader } from "./components/ui";
 import { homePathForUser, isMobileCrewRole } from "./lib";
 
@@ -82,6 +85,7 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Guest><Login /></Guest>} />
+              <Route path="/forgot-password" element={<Guest><ForgotPassword /></Guest>} />
               <Route path="/signup" element={<Navigate to="/login" replace />} />
               <Route path="/select-company" element={<SelectCompany />} />
 
@@ -89,6 +93,8 @@ export default function App() {
                 <Route path="/mobile" element={<Navigate to="/mobile/trips" replace />} />
                 <Route path="/mobile/trips" element={<MobileTripsList />} />
                 <Route path="/mobile/trips/:id" element={<MobileTripDetail />} />
+                <Route path="/mobile/vehicle" element={<MobileVehicle />} />
+                <Route path="/mobile/profile" element={<MobileProfile />} />
               </Route>
 
               <Route element={<PrivateDesk />}>

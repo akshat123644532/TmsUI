@@ -126,36 +126,46 @@ export function AuthProvider({ children }) {
     return saved;
   }, []);
 
-  const login = async (email, password) => {
+  const acceptSession = useCallback((data) => {
+    if (!data?.token || !data?.user) {
+      throw new Error("Invalid login response");
+    }
+    const nextUser = {
+      ...data.user,
+      user_type: normalizeRole(data.user.user_type) || data.user.user_type,
+    };
+    setSession({ ...data, user: nextUser });
+    setUser(nextUser);
+    setAuthed(true);
+    if (isSuperAdminRole(nextUser.user_type)) {
+      setActiveCompany(null);
+      setCompanyState(null);
+    } else {
+      bindCompanyForUser(nextUser);
+    }
+    return nextUser;
+  }, [bindCompanyForUser]);
+
+  const login = async (identifier, password) => {
+    const value = String(identifier || "").trim();
     try {
-      const data = await api("/api/login", {
+      const isEmail = value.includes("@");
+      const data = await api(endpoints.login, {
         method: "POST",
         auth: false,
-        body: { email, password },
+        body: isEmail
+          ? { email: value.toLowerCase(), identifier: value.toLowerCase(), password }
+          : { mobile: value, identifier: value, password },
       });
 
       if (data?.token && data?.user) {
-        const nextUser = {
-          ...data.user,
-          user_type: normalizeRole(data.user.user_type) || data.user.user_type,
-        };
-        setSession({ ...data, user: nextUser });
-        setUser(nextUser);
-        setAuthed(true);
-        // Fresh Super Admin login always re-picks company (ignore stale localStorage).
-        if (isSuperAdminRole(nextUser.user_type)) {
-          setActiveCompany(null);
-          setCompanyState(null);
-        } else {
-          bindCompanyForUser(nextUser);
-        }
-        return nextUser;
+        return acceptSession(data);
       }
     } catch (error) {
-      if (!isDemoLogin(email, password)) throw error;
+      if (!isDemoLogin(value, password)) throw error;
     }
 
-    if (!isDemoLogin(email, password)) {
+    if (!isDemoLogin(value, password)) {
       throw new Error("Invalid email or password");
     }
 
@@ -165,6 +175,15 @@ export function AuthProvider({ children }) {
     setAuthed(true);
     bindCompanyForUser(nextUser);
     return nextUser;
+  };
+
+  const loginWithOtp = async (mobile, otp) => {
+    const data = await api(endpoints.otpVerify, {
+      method: "POST",
+      auth: false,
+      body: { mobile: String(mobile || "").trim(), otp: String(otp || "").trim() },
+    });
+    return acceptSession(data);
   };
 
   const logout = async () => {
@@ -255,6 +274,7 @@ export function AuthProvider({ children }) {
         needsCompanySelection,
         missingCompany,
         login,
+        loginWithOtp,
         logout,
         refreshUser,
         applyUser,

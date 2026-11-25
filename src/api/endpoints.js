@@ -10,6 +10,11 @@ export const endpoints = {
   register: "/api/auth/register",
   profile: "/api/profile",
   selectCompany: "/api/auth/select-company",
+  otpRequest: "/api/auth/otp/request",
+  otpVerify: "/api/auth/otp/verify",
+  passwordForgot: "/api/auth/password/forgot",
+  passwordReset: "/api/auth/password/reset",
+  passwordChange: "/api/auth/password/change",
 
   users: "/api/users",
   user: (id) => `/api/users/${id}`,
@@ -62,6 +67,7 @@ export const endpoints = {
   mobileTrips: "/api/mobile/trips",
   mobileTrip: (id) => `/api/mobile/trips/${id}`,
   mobileExpenses: "/api/mobile/expenses",
+  myVehicle: "/api/vehicles/my-vehicle",
 
   tripAdvances: "/api/trip-advances",
   tripAdvance: (id) => `/api/trip-advances/${id}`,
