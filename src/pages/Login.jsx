@@ -32,7 +32,7 @@ export default function Login() {
     try {
       const nextUser = await login(email.trim(), password);
       if (isMobileCrewRole(nextUser?.user_type)) {
-        navigate("/mobile/trips", { replace: true });
+        navigate("/routes", { replace: true });
       } else if (isSuperAdminRole(nextUser?.user_type)) {
         navigate("/select-company", { replace: true });
       } else {

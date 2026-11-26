@@ -51,7 +51,7 @@ export function isSuperAdminRole(type) {
   return normalizeRole(type) === "SUPER_ADMIN";
 }
 
-/** Driver / Helper — mobile app only, never Admin Web shell. */
+/** Driver / Helper — same Desk shell, limited modules (BRD §17). */
 export function isMobileCrewRole(type) {
   return ["DRIVER", "HELPER"].includes(normalizeRole(type));
 }
@@ -65,8 +65,17 @@ export function isHelperRole(type) {
 }
 
 export function homePathForUser(type) {
-  if (isMobileCrewRole(type)) return "/mobile/trips";
+  if (isMobileCrewRole(type)) return "/routes";
   return "/";
+}
+
+/** Desk paths Driver/Helper may open inside the shared Shell. */
+export function isCrewAllowedPath(pathname) {
+  if (!pathname) return false;
+  if (pathname === "/routes" || pathname.startsWith("/routes/")) return true;
+  if (pathname === "/fleet" || pathname.startsWith("/fleet/")) return true;
+  if (pathname === "/profile" || pathname.startsWith("/profile/")) return true;
+  return false;
 }
 
 export function roleLabel(type) {

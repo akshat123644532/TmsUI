@@ -189,7 +189,7 @@ export default function SelectCompany() {
   }, [busy, creating, error, picking, companies, needsCompanySelection]);
 
   if (!authed) return <Navigate to="/login" replace />;
-  if (isMobileCrewRole(user?.user_type)) return <Navigate to="/mobile/trips" replace />;
+  if (isMobileCrewRole(user?.user_type)) return <Navigate to="/routes" replace />;
   if (!isSuperAdminRole(user?.user_type)) return <Navigate to="/" replace />;
   if (!needsCompanySelection && company?.id) return <Navigate to="/" replace />;
 

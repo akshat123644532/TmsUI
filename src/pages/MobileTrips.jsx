@@ -123,7 +123,7 @@ export function MobileTripsList() {
         <ul className="mobile-trip-list">
           {filtered.map((trip) => (
             <li key={trip.id}>
-              <Link className="mobile-trip-card" to={`/mobile/trips/${trip.id}`}>
+              <Link className="mobile-trip-card" to={`/routes/${trip.id}`}>
                 <div>
                   <strong>{tripTitle(trip)}</strong>
                   <small>
@@ -291,7 +291,7 @@ export function MobileTripDetail() {
   return (
     <section className="mobile-page stack">
       <div className="mobile-page-head">
-        <button type="button" className="btn btn-ghost" onClick={() => navigate("/mobile/trips")}>
+        <button type="button" className="btn btn-ghost" onClick={() => navigate("/routes")}>
           ← My Trips
         </button>
         <h1>{loading ? "Trip" : tripTitle(trip) || `Trip #${id}`}</h1>
@@ -304,7 +304,7 @@ export function MobileTripDetail() {
         <div className="mobile-empty">
           <strong>Trip not available</strong>
           <p className="muted">You can only open trips assigned to you.</p>
-          <Link className="btn btn-primary" to="/mobile/trips">Back to My Trips</Link>
+          <Link className="btn btn-primary" to="/routes">Back to My Trips</Link>
         </div>
       ) : null}
 

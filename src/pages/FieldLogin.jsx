@@ -32,7 +32,7 @@ export default function FieldLogin() {
       setError("This login is for Driver / Helper only. Use Desk sign-in for office accounts.");
       return;
     }
-    navigate("/mobile/trips", { replace: true });
+    navigate("/routes", { replace: true });
   };
 
   const requestOtp = async () => {

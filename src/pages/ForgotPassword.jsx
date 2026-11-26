@@ -20,7 +20,7 @@ export default function ForgotPassword() {
   const [busy, setBusy] = useState(false);
 
   if (authed) {
-    return <Navigate to={isMobileCrewRole(user?.user_type) ? "/mobile/trips" : homePathForUser(user?.user_type)} replace />;
+    return <Navigate to={homePathForUser(user?.user_type)} replace />;
   }
 
   const digits = mobile.replace(/\D/g, "").slice(-10);

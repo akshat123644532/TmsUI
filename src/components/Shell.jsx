@@ -2,7 +2,15 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api, DEMO_TOKEN, fetchAll, getToken, pingApi } from "../api";
 import { useAuth } from "../auth";
-import { expiryBadgeInfo, formatDate, initials, isAdminRole, isSuperAdminRole, roleLabel } from "../lib";
+import {
+  expiryBadgeInfo,
+  formatDate,
+  initials,
+  isAdminRole,
+  isMobileCrewRole,
+  isSuperAdminRole,
+  roleLabel,
+} from "../lib";
 import { useTheme } from "../theme";
 import { Icon } from "./Icons";
 import { Modal } from "./ui";
@@ -46,6 +54,18 @@ const NAV_GROUPS = [
   },
 ];
 
+/** BRD §17 — Driver/Helper: assigned trips, vehicle, profile only (same Desk chrome). */
+const CREW_NAV_GROUPS = [
+  {
+    label: "Field",
+    items: [
+      { to: "/routes", label: "My Trips", icon: "pin" },
+      { to: "/fleet", label: "My Vehicle", icon: "truck" },
+      { to: "/profile", label: "Profile", icon: "users" },
+    ],
+  },
+];
+
 export default function Shell() {
   const { user, logout, refreshUser, company, selectCompany, loadCompanies } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -63,6 +83,8 @@ export default function Shell() {
   const [companyName, setCompanyName] = useState(() => company?.name || user?.company_name || "Your company");
   const demo = getToken() === DEMO_TOKEN;
   const superAdmin = isSuperAdminRole(user?.user_type);
+  const crew = isMobileCrewRole(user?.user_type);
+  const navGroups = crew ? CREW_NAV_GROUPS : NAV_GROUPS;
 
   useEffect(() => {
     refreshUser().catch(() => {});
@@ -72,7 +94,8 @@ export default function Shell() {
     setCompanyName(company?.name || user?.company_name || "Your company");
     let live = true;
     const activeId = company?.id || user?.company_id;
-    if (!activeId || demo) return undefined;
+    // Driver/Helper must not hit desk company/list APIs.
+    if (!activeId || demo || crew) return undefined;
 
     loadCompanies()
       .then((rows) => {
@@ -90,7 +113,7 @@ export default function Shell() {
     return () => {
       live = false;
     };
-  }, [user?.company_id, user?.company_name, company?.id, company?.name, demo, loadCompanies, selectCompany]);
+  }, [user?.company_id, user?.company_name, company?.id, company?.name, demo, crew, loadCompanies, selectCompany]);
 
   useEffect(() => {
     let live = true;
@@ -112,7 +135,7 @@ export default function Shell() {
   useEffect(() => {
     const needle = query.trim();
 
-    if (needle.length < 2) {
+    if (crew || needle.length < 2) {
       setHits([]);
       return undefined;
     }
@@ -207,9 +230,14 @@ export default function Shell() {
     }, 280);
 
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, crew]);
 
   const loadAlerts = async () => {
+    if (crew) {
+      setAlerts([]);
+      setAlertNote("");
+      return;
+    }
     try {
       const packs = await Promise.all([
         api("/api/vehicle-documents?limit=100").catch(() => ({ documents: [] })),
@@ -230,7 +258,7 @@ export default function Shell() {
 
   useEffect(() => {
     loadAlerts();
-  }, []);
+  }, [crew]);
 
   const openAlerts = async () => {
     setPanel(panel === "alerts" ? "" : "alerts");
@@ -253,7 +281,7 @@ export default function Shell() {
 
   const signOut = async () => {
     await logout();
-    navigate("/login");
+    navigate(crew ? "/field" : "/login");
   };
 
   return (
@@ -266,7 +294,7 @@ export default function Shell() {
               <Icon name="truck" size={18} />
             </span>
             <strong className="brand-name">
-              TMS <span>Desk</span>
+              TMS <span>{crew ? "Field" : "Desk"}</span>
             </strong>
           </div>
           <button
@@ -283,7 +311,7 @@ export default function Shell() {
         </div>
 
         <nav className="nav">
-          {NAV_GROUPS.map((group) => {
+          {navGroups.map((group) => {
             const items = group.items.filter((item) => {
               if (item.superAdmin) return isSuperAdminRole(user?.user_type);
               if (item.admin) return isAdminRole(user?.user_type);
@@ -297,7 +325,7 @@ export default function Shell() {
                   <NavLink
                     key={item.to}
                     to={item.to}
-                    end={item.to === "/"}
+                    end={item.to === "/" || item.to === "/routes"}
                     title={item.label}
                     className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
                     onClick={() => setMobileOpen(false)}
@@ -324,38 +352,45 @@ export default function Shell() {
           <button className="icon-btn menu-btn" type="button" aria-label="Open menu" onClick={() => setMobileOpen(true)}>
             <Icon name="menu" />
           </button>
-          <label className="search-wrap">
-            <span className="search-icon">
-              <Icon name="search" size={16} />
-            </span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Global search..."
-              aria-label="Global search"
-            />
-            {query.trim().length >= 2 ? (
-              <div className="search-results">
-                {searching ? <p className="muted pad">Searching...</p> : null}
-                {!searching && hits.length === 0 ? <p className="muted pad">No matches</p> : null}
-                {hits.map((hit) => (
-                  <button
-                    key={hit.id}
-                    type="button"
-                    className="search-hit"
-                    onClick={() => {
-                      setQuery("");
-                      setHits([]);
-                      navigate(`${hit.to}?q=${encodeURIComponent(hit.query || hit.label)}&focus=${hit.recordId}`);
-                    }}
-                  >
-                    <strong>{hit.label}</strong>
-                    <span>{hit.type}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </label>
+          {crew ? (
+            <div className="crew-top-note">
+              <strong>Assigned work only</strong>
+              <span className="muted">Admin modules are hidden for Driver / Helper</span>
+            </div>
+          ) : (
+            <label className="search-wrap">
+              <span className="search-icon">
+                <Icon name="search" size={16} />
+              </span>
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Global search..."
+                aria-label="Global search"
+              />
+              {query.trim().length >= 2 ? (
+                <div className="search-results">
+                  {searching ? <p className="muted pad">Searching...</p> : null}
+                  {!searching && hits.length === 0 ? <p className="muted pad">No matches</p> : null}
+                  {hits.map((hit) => (
+                    <button
+                      key={hit.id}
+                      type="button"
+                      className="search-hit"
+                      onClick={() => {
+                        setQuery("");
+                        setHits([]);
+                        navigate(`${hit.to}?q=${encodeURIComponent(hit.query || hit.label)}&focus=${hit.recordId}`);
+                      }}
+                    >
+                      <strong>{hit.label}</strong>
+                      <span>{hit.type}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </label>
+          )}
 
           <div className="top-spacer" />
 
@@ -381,6 +416,7 @@ export default function Shell() {
             {online ? "SYSTEM ONLINE" : "API OFFLINE"}
           </div>
 
+          {crew ? null : (
           <div className="pop-anchor">
             <button className="icon-btn" type="button" aria-label="Notifications" onClick={openAlerts}>
               <Icon name="bell" />
@@ -402,6 +438,7 @@ export default function Shell() {
               </div>
             ) : null}
           </div>
+          )}
 
           <button
             className="icon-btn"

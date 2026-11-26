@@ -1,9 +1,8 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import { ThemeProvider } from "./theme";
 import { ToastProvider } from "./toast";
 import Shell from "./components/Shell";
-import MobileShell from "./components/MobileShell";
 import Login from "./pages/Login";
 import FieldLogin from "./pages/FieldLogin";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -28,36 +27,24 @@ import { MobileTripDetail, MobileTripsList } from "./pages/MobileTrips";
 import MobileVehicle from "./pages/MobileVehicle";
 import MobileProfile from "./pages/MobileProfile";
 import { Banner, PageHeader } from "./components/ui";
-import { homePathForUser, isMobileCrewRole } from "./lib";
+import { homePathForUser, isCrewAllowedPath, isMobileCrewRole } from "./lib";
 
 function Guest({ children }) {
   const { authed, needsCompanySelection, user } = useAuth();
   if (authed && needsCompanySelection) return <Navigate to="/select-company" replace />;
-  if (authed && isMobileCrewRole(user?.user_type)) return <Navigate to="/mobile/trips" replace />;
+  if (authed && isMobileCrewRole(user?.user_type)) return <Navigate to="/routes" replace />;
   if (authed) return <Navigate to="/" replace />;
   return children;
 }
 
-/** Driver / Helper — mobile field app only. */
-function PrivateMobile() {
-  const { authed, user } = useAuth();
-  if (!authed) return <Navigate to="/field" replace />;
-  // Admin users are not locked to mobile-only routes on a shared domain.
-  if (!isMobileCrewRole(user?.user_type)) {
-    return <Navigate to="/" replace />;
-  }
-  return <MobileShell />;
-}
-
-/** Desk Admin Web — never mount for DRIVER / HELPER (avoids /api/drivers etc.). */
-function PrivateDesk() {
+/** Shared Desk shell; Driver/Helper see filtered modules only. */
+function PrivateApp() {
   const { authed, needsCompanySelection, missingCompany, user } = useAuth();
   if (!authed) return <Navigate to="/login" replace />;
-  if (isMobileCrewRole(user?.user_type)) {
-    return <Navigate to="/mobile/trips" replace state={{ notice: "Admin modules not available for Driver/Helper" }} />;
+  if (!isMobileCrewRole(user?.user_type) && needsCompanySelection) {
+    return <Navigate to="/select-company" replace />;
   }
-  if (needsCompanySelection) return <Navigate to="/select-company" replace />;
-  if (missingCompany) {
+  if (!isMobileCrewRole(user?.user_type) && missingCompany) {
     return (
       <section className="login-screen">
         <div className="login-card-wrap">
@@ -72,9 +59,50 @@ function PrivateDesk() {
   return <Shell />;
 }
 
+/** Block desk-only pages for Driver/Helper; keep same Shell chrome. */
+function DeskOnly({ children }) {
+  const { user } = useAuth();
+  if (isMobileCrewRole(user?.user_type)) {
+    return (
+      <Navigate
+        to="/routes"
+        replace
+        state={{ notice: "Admin modules not available for Driver/Helper" }}
+      />
+    );
+  }
+  return children;
+}
+
+function CrewHome() {
+  return <Navigate to="/routes" replace />;
+}
+
+function TripsGate() {
+  const { user } = useAuth();
+  if (isMobileCrewRole(user?.user_type)) return <MobileTripsList />;
+  return <RoutesPage />;
+}
+
+function TripDetailGate() {
+  const { user } = useAuth();
+  if (isMobileCrewRole(user?.user_type)) return <MobileTripDetail />;
+  return <Navigate to="/routes" replace />;
+}
+
+function FleetGate() {
+  const { user } = useAuth();
+  if (isMobileCrewRole(user?.user_type)) return <MobileVehicle />;
+  return <Fleet />;
+}
+
 function CatchAll() {
   const { authed, user } = useAuth();
+  const location = useLocation();
   if (!authed) return <Navigate to="/login" replace />;
+  if (isMobileCrewRole(user?.user_type) && !isCrewAllowedPath(location.pathname)) {
+    return <Navigate to="/routes" replace />;
+  }
   return <Navigate to={homePathForUser(user?.user_type)} replace />;
 }
 
@@ -91,32 +119,33 @@ export default function App() {
               <Route path="/signup" element={<Navigate to="/login" replace />} />
               <Route path="/select-company" element={<SelectCompany />} />
 
-              <Route element={<PrivateMobile />}>
-                <Route path="/mobile" element={<Navigate to="/mobile/trips" replace />} />
-                <Route path="/mobile/trips" element={<MobileTripsList />} />
-                <Route path="/mobile/trips/:id" element={<MobileTripDetail />} />
-                <Route path="/mobile/vehicle" element={<MobileVehicle />} />
-                <Route path="/mobile/profile" element={<MobileProfile />} />
-              </Route>
+              <Route element={<PrivateApp />}>
+                <Route path="/" element={<DeskOnly><Dashboard /></DeskOnly>} />
+                <Route path="/companies" element={<DeskOnly><Companies /></DeskOnly>} />
+                <Route path="/users" element={<DeskOnly><Users /></DeskOnly>} />
+                <Route path="/access" element={<DeskOnly><Access /></DeskOnly>} />
+                <Route path="/audit" element={<DeskOnly><Audit /></DeskOnly>} />
+                <Route path="/fleet" element={<FleetGate />} />
+                <Route path="/staff" element={<DeskOnly><Staff /></DeskOnly>} />
+                <Route path="/loads" element={<DeskOnly><Loads /></DeskOnly>} />
+                <Route path="/routes" element={<TripsGate />} />
+                <Route path="/routes/:id" element={<TripDetailGate />} />
+                <Route path="/profile" element={<MobileProfile />} />
+                <Route path="/expenses" element={<DeskOnly><Expenses /></DeskOnly>} />
+                <Route path="/settlements" element={<DeskOnly><Settlements /></DeskOnly>} />
+                <Route path="/clients" element={<DeskOnly><Clients /></DeskOnly>} />
+                <Route path="/invoices" element={<DeskOnly><Invoices /></DeskOnly>} />
+                <Route path="/payments" element={<DeskOnly><Payments /></DeskOnly>} />
+                <Route path="/reports" element={<DeskOnly><Reports /></DeskOnly>} />
+                <Route path="/documents" element={<DeskOnly><Documents /></DeskOnly>} />
+                <Route path="/outlook" element={<DeskOnly><Navigate to="/routes?tab=board" replace /></DeskOnly>} />
 
-              <Route element={<PrivateDesk />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/companies" element={<Companies />} />
-                <Route path="/users" element={<Users />} />
-                <Route path="/access" element={<Access />} />
-                <Route path="/audit" element={<Audit />} />
-                <Route path="/fleet" element={<Fleet />} />
-                <Route path="/staff" element={<Staff />} />
-                <Route path="/loads" element={<Loads />} />
-                <Route path="/routes" element={<RoutesPage />} />
-                <Route path="/expenses" element={<Expenses />} />
-                <Route path="/settlements" element={<Settlements />} />
-                <Route path="/clients" element={<Clients />} />
-                <Route path="/invoices" element={<Invoices />} />
-                <Route path="/payments" element={<Payments />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/documents" element={<Documents />} />
-                <Route path="/outlook" element={<Navigate to="/routes?tab=board" replace />} />
+                {/* Legacy field URLs → same Shell modules */}
+                <Route path="/mobile" element={<CrewHome />} />
+                <Route path="/mobile/trips" element={<Navigate to="/routes" replace />} />
+                <Route path="/mobile/trips/:id" element={<TripDetailGate />} />
+                <Route path="/mobile/vehicle" element={<Navigate to="/fleet" replace />} />
+                <Route path="/mobile/profile" element={<Navigate to="/profile" replace />} />
               </Route>
 
               <Route path="*" element={<CatchAll />} />
