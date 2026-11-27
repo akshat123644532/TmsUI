@@ -64,9 +64,16 @@ export const endpoints = {
   tripExpenseTypes: "/api/trip-expenses/types",
   tripExpenseType: (id) => `/api/trip-expenses/types/${id}`,
 
+  // BRD §17 — Driver/Helper mobile
+  mobileMe: "/api/mobile/me",
+  mobileVehicle: "/api/mobile/vehicle",
+  mobileVehicleDocuments: "/api/mobile/vehicle/documents",
   mobileTrips: "/api/mobile/trips",
   mobileTrip: (id) => `/api/mobile/trips/${id}`,
+  mobileTripSettlement: (id) => `/api/mobile/trips/${id}/settlement`,
+  mobileExpenseTypes: "/api/mobile/expense-types",
   mobileExpenses: "/api/mobile/expenses",
+  /** @deprecated prefer mobileVehicle */
   myVehicle: "/api/vehicles/my-vehicle",
 
   tripAdvances: "/api/trip-advances",

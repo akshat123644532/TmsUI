@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { api, pickList } from "../api";
+import { api, openApiFile, pickList } from "../api";
 import { endpoints } from "../api/endpoints";
 import { useAuth } from "../auth";
 import { Banner, Field, FormActions, FormLegend, Select, StatusPill, Tabs } from "../components/ui";
@@ -16,19 +16,10 @@ import {
 } from "../lib";
 import { useToast } from "../toast";
 
-const DEFAULT_EXPENSE_TYPES = EXPENSE_TYPES.map((code) => ({
+const FALLBACK_TYPES = EXPENSE_TYPES.map((code) => ({
   code,
   name: code.charAt(0) + code.slice(1).toLowerCase(),
 }));
-
-const HISTORY_STATUSES = new Set([
-  "DELIVERED",
-  "FINAL_REPORT_SUBMITTED",
-  "VERIFIED",
-  "CLOSED",
-  "COMPLETED",
-  "CANCELLED",
-]);
 
 function tripTitle(trip) {
   if (!trip) return "Trip";
@@ -48,11 +39,12 @@ function parseTrip(data, id) {
   return { id: Number(id) || id };
 }
 
-function nestedList(trip, ...keys) {
-  for (const key of keys) {
-    if (Array.isArray(trip?.[key])) return trip[key];
-  }
-  return [];
+function typeValue(row) {
+  return row.code || row.name || String(row.id);
+}
+
+function typeLabel(row) {
+  return row.name || row.code || `#${row.id}`;
 }
 
 export function MobileTripsList() {
@@ -67,7 +59,8 @@ export function MobileTripsList() {
     let live = true;
     setLoading(true);
     setError("");
-    api(endpoints.mobileTrips)
+    const scope = tab === "history" ? "history" : "current";
+    api(`${endpoints.mobileTrips}?scope=${scope}&limit=100`)
       .then((data) => {
         if (!live) return;
         setTrips(parseTrips(data));
@@ -83,14 +76,7 @@ export function MobileTripsList() {
     return () => {
       live = false;
     };
-  }, []);
-
-  const filtered = useMemo(() => {
-    if (tab === "history") {
-      return trips.filter((trip) => HISTORY_STATUSES.has(String(trip.status || "").toUpperCase()));
-    }
-    return trips.filter((trip) => !HISTORY_STATUSES.has(String(trip.status || "").toUpperCase()));
-  }, [trips, tab]);
+  }, [tab]);
 
   return (
     <section className="mobile-page stack">
@@ -110,7 +96,7 @@ export function MobileTripsList() {
       />
       {loading ? (
         <p className="muted">Loading trips…</p>
-      ) : filtered.length === 0 ? (
+      ) : trips.length === 0 ? (
         <div className="mobile-empty">
           <strong>{tab === "history" ? "No trip history yet" : "No trips assigned yet"}</strong>
           <p className="muted">
@@ -121,7 +107,7 @@ export function MobileTripsList() {
         </div>
       ) : (
         <ul className="mobile-trip-list">
-          {filtered.map((trip) => (
+          {trips.map((trip) => (
             <li key={trip.id}>
               <Link className="mobile-trip-card" to={`/routes/${trip.id}`}>
                 <div>
@@ -141,16 +127,23 @@ export function MobileTripsList() {
   );
 }
 
-function DriverExpenseForm({ tripId, onClose, onCreated }) {
+function DriverExpenseForm({ tripId, types, onClose, onCreated }) {
+  const options = types.length ? types : FALLBACK_TYPES;
   const [error, setError] = useState("");
   const [issues, setIssues] = useState({});
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState(null);
   const [form, setForm] = useState({
-    expense_type: DEFAULT_EXPENSE_TYPES[0].code,
+    expense_type: typeValue(options[0]),
     requested_amount: "",
     remarks: "",
   });
+
+  useEffect(() => {
+    if (!form.expense_type && options[0]) {
+      setForm((current) => ({ ...current, expense_type: typeValue(options[0]) }));
+    }
+  }, [options]);
 
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -184,7 +177,7 @@ function DriverExpenseForm({ tripId, onClose, onCreated }) {
         expense_type: form.expense_type,
         requested_amount: num(form.requested_amount),
         remarks: form.remarks.trim() || "",
-        status: "PENDING_APPROVAL",
+        status: "SUBMITTED",
       });
     } catch (err) {
       setError(err.message || "Could not submit expense");
@@ -199,8 +192,8 @@ function DriverExpenseForm({ tripId, onClose, onCreated }) {
       <p className="form-hint span-2">Receipt photo required (camera or gallery).</p>
       <Field label="Expense type" required error={issues.expense_type}>
         <Select value={form.expense_type} onChange={set("expense_type")}>
-          {DEFAULT_EXPENSE_TYPES.map((row) => (
-            <option key={row.code} value={row.code}>{row.name}</option>
+          {options.map((row) => (
+            <option key={row.id || typeValue(row)} value={typeValue(row)}>{typeLabel(row)}</option>
           ))}
         </Select>
       </Field>
@@ -217,7 +210,7 @@ function DriverExpenseForm({ tripId, onClose, onCreated }) {
       <Field label="Receipt photo" required error={issues.file} className="span-2" hint="Camera / gallery">
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,.pdf,application/pdf"
           capture="environment"
           onChange={(event) => {
             setFile(event.target.files?.[0] || null);
@@ -250,11 +243,13 @@ export function MobileTripDetail() {
   const driver = isDriverRole(user?.user_type);
   const [panel, setPanel] = useState("overview");
   const [trip, setTrip] = useState(null);
+  const [expenses, setExpenses] = useState([]);
+  const [expenseTypes, setExpenseTypes] = useState([]);
+  const [settlements, setSettlements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const [showExpense, setShowExpense] = useState(false);
-  const [localExpenses, setLocalExpenses] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -262,7 +257,30 @@ export function MobileTripDetail() {
     setForbidden(false);
     try {
       const data = await api(endpoints.mobileTrip(id));
-      setTrip(parseTrip(data, id));
+      const next = parseTrip(data, id);
+      setTrip(next);
+
+      const nestedSettlements = Array.isArray(next.settlements) ? next.settlements : [];
+      setSettlements(nestedSettlements);
+
+      if (driver) {
+        const [expenseData, typeData, settlementData] = await Promise.all([
+          api(`${endpoints.mobileExpenses}?trip_id=${id}&limit=100`).catch(() => ({ expenses: [] })),
+          api(endpoints.mobileExpenseTypes).catch(() => ({ expenseTypes: [] })),
+          nestedSettlements.length
+            ? Promise.resolve({ settlements: nestedSettlements })
+            : api(endpoints.mobileTripSettlement(id)).catch(() => ({ settlements: [] })),
+        ]);
+        setExpenses(pickList(expenseData, "expenses", "tripExpenses", "rows"));
+        setExpenseTypes(
+          pickList(typeData, "expenseTypes", "expense_types", "types", "rows")
+            .filter((row) => row && Number(row.status ?? 1) !== 0)
+        );
+        setSettlements(pickList(settlementData, "settlements", "rows"));
+      } else {
+        setExpenses([]);
+        setExpenseTypes([]);
+      }
     } catch (err) {
       const message = String(err?.message || "");
       if (/\b403\b|forbidden|not assigned|not allowed/i.test(message)) {
@@ -272,6 +290,8 @@ export function MobileTripDetail() {
         setError(message || "Could not load trip");
       }
       setTrip(null);
+      setExpenses([]);
+      setSettlements([]);
     } finally {
       setLoading(false);
     }
@@ -281,12 +301,13 @@ export function MobileTripDetail() {
     load();
   }, [id]);
 
-  const docs = nestedList(trip, "documents", "trip_documents", "tripDocuments");
-  const expenses = [
-    ...nestedList(trip, "expenses", "trip_expenses", "tripExpenses"),
-    ...localExpenses,
-  ];
-  const settlement = trip?.settlement || trip?.trip_settlement || null;
+  const tripDocs = Array.isArray(trip?.trip_documents) ? trip.trip_documents : [];
+  const biltySummaries = Array.isArray(trip?.bilty_summaries)
+    ? trip.bilty_summaries
+    : Array.isArray(trip?.bilties)
+      ? trip.bilties
+      : [];
+  const settlement = settlements[0] || null;
 
   return (
     <section className="mobile-page stack">
@@ -345,63 +366,101 @@ export function MobileTripDetail() {
               </div>
               <div className="mobile-detail-row">
                 <span>Bilty</span>
-                <strong>{trip.bilty_number || trip.bilty_id || "—"}</strong>
+                <strong>
+                  {biltySummaries.length
+                    ? biltySummaries.map((b) => b.bilty_number || b.bilty_id).filter(Boolean).join(", ")
+                    : (trip.bilty_number || trip.bilty_id || "—")}
+                </strong>
               </div>
-              {trip.freight_amount != null ? (
-                <div className="mobile-detail-row">
-                  <span>Freight</span>
-                  <strong>{money(trip.freight_amount)}</strong>
-                </div>
-              ) : null}
             </div>
           ) : null}
 
           {panel === "docs" ? (
-            docs.length ? (
-              <ul className="mobile-trip-list">
-                {docs.map((doc) => (
-                  <li key={doc.id || `${doc.document_type}-${doc.file_name}`}>
-                    <div className="mobile-trip-card">
-                      <div>
-                        <strong>{doc.document_type || "Document"}</strong>
-                        <small>{doc.file_name || doc.document_number || "—"}</small>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="mobile-empty">
-                <strong>No trip documents here yet</strong>
-                <p className="muted">POD / e-way and bilty copies uploaded by office will show when available on this trip.</p>
+            <div className="stack">
+              <div className="mobile-expense-panel">
+                <h2>Trip documents</h2>
+                {tripDocs.length === 0 ? (
+                  <p className="muted">No trip documents uploaded yet.</p>
+                ) : (
+                  <ul className="mobile-trip-list">
+                    {tripDocs.map((doc) => (
+                      <li key={doc.id || doc.document_url}>
+                        <div className="mobile-trip-card">
+                          <div>
+                            <strong>{doc.document_type || "Document"}</strong>
+                            <small>{doc.remarks || formatDate(doc.created_at)}</small>
+                          </div>
+                          {doc.document_url ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost table-action"
+                              onClick={() => openApiFile(doc.document_url).catch((err) => toast(err.message))}
+                            >
+                              Open
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-            )
+
+              <div className="mobile-expense-panel">
+                <h2>Bilty / LR</h2>
+                {biltySummaries.length === 0 ? (
+                  <p className="muted">No bilty linked to this trip.</p>
+                ) : (
+                  <ul className="mobile-trip-list">
+                    {biltySummaries.map((row) => (
+                      <li key={row.bilty_id || row.bilty_number}>
+                        <div className="mobile-trip-card">
+                          <div>
+                            <strong>{row.bilty_number || `Bilty #${row.bilty_id}`}</strong>
+                            <small>
+                              {[row.consignor, row.consignee].filter(Boolean).join(" → ")
+                                || [row.route?.from || row.pickup_location, row.route?.to || row.drop_location].filter(Boolean).join(" → ")
+                                || "—"}
+                            </small>
+                          </div>
+                          <StatusPill value={row.status || row.bilty_status || "—"} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           ) : null}
 
           {panel === "expenses" ? (
             <div className="stack">
-              {expenses.length ? (
-                <ul className="mobile-trip-list">
-                  {expenses.map((row, index) => (
-                    <li key={row.id || `local-${index}`}>
-                      <div className="mobile-trip-card">
-                        <div>
-                          <strong>{row.expense_type || "Expense"}</strong>
-                          <small>
-                            {money(row.requested_amount ?? row.amount)}
-                            {row.remarks ? ` · ${row.remarks}` : ""}
-                          </small>
+              {driver ? (
+                expenses.length ? (
+                  <ul className="mobile-trip-list">
+                    {expenses.map((row) => (
+                      <li key={row.id || `${row.expense_type}-${row.requested_amount}`}>
+                        <div className="mobile-trip-card">
+                          <div>
+                            <strong>{row.expense_type || "Expense"}</strong>
+                            <small>
+                              {money(row.requested_amount ?? row.approved_amount ?? 0)}
+                              {row.remarks ? ` · ${row.remarks}` : ""}
+                            </small>
+                          </div>
+                          <StatusPill value={row.status || "SUBMITTED"} />
                         </div>
-                        <StatusPill value={row.status || "SUBMITTED"} />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mobile-empty">
+                    <strong>No expenses yet</strong>
+                    <p className="muted">Submitted expenses and approval status will show here.</p>
+                  </div>
+                )
               ) : (
-                <div className="mobile-empty">
-                  <strong>No expenses listed yet</strong>
-                  <p className="muted">Submitted expenses appear after office sync. Approval status updates here when returned with the trip.</p>
-                </div>
+                <p className="muted">Helpers can view this trip. Expense history is for drivers only.</p>
               )}
 
               {driver ? (
@@ -410,11 +469,12 @@ export function MobileTripDetail() {
                     <h2>Submit expense</h2>
                     <DriverExpenseForm
                       tripId={trip.id}
+                      types={expenseTypes}
                       onClose={() => setShowExpense(false)}
-                      onCreated={(row) => {
-                        setLocalExpenses((current) => [{ ...row, _local: true }, ...current]);
+                      onCreated={() => {
                         setShowExpense(false);
                         toast("Expense submitted for approval");
+                        load();
                       }}
                     />
                   </div>
@@ -423,35 +483,48 @@ export function MobileTripDetail() {
                     Submit expense
                   </button>
                 )
-              ) : (
-                <p className="muted">Helpers can view this trip. Expense submit is for drivers only.</p>
-              )}
+              ) : null}
             </div>
           ) : null}
 
           {panel === "settlement" ? (
-            settlement ? (
+            !driver ? (
+              <p className="muted">Settlement status is shown to drivers for assigned trips.</p>
+            ) : settlement ? (
               <div className="mobile-detail-card">
                 <div className="mobile-detail-row">
                   <span>Status</span>
                   <StatusPill value={settlement.status || "—"} />
                 </div>
                 <div className="mobile-detail-row">
-                  <span>Closing balance</span>
-                  <strong>{money(settlement.closing_balance ?? settlement.balance ?? 0)}</strong>
+                  <span>Advance</span>
+                  <strong>{money(settlement.total_advance)}</strong>
+                </div>
+                <div className="mobile-detail-row">
+                  <span>Expenses</span>
+                  <strong>{money(settlement.total_expenses)}</strong>
+                </div>
+                <div className="mobile-detail-row">
+                  <span>Carry forward</span>
+                  <strong>{money(settlement.carry_forward_amount)}</strong>
+                </div>
+                <div className="mobile-detail-row">
+                  <span>Balance</span>
+                  <strong>{money(settlement.balance_amount ?? settlement.closing_balance)}</strong>
                 </div>
                 <div className="mobile-detail-row">
                   <span>Verified</span>
-                  <strong>
-                    {settlement.verified_by_name || settlement.verified_by || "—"}
-                    {settlement.verified_at ? ` · ${formatDate(settlement.verified_at)}` : ""}
-                  </strong>
+                  <strong>{formatDate(settlement.verified_at)}</strong>
+                </div>
+                <div className="mobile-detail-row">
+                  <span>Settled</span>
+                  <strong>{formatDate(settlement.settled_at)}</strong>
                 </div>
               </div>
             ) : (
               <div className="mobile-empty">
                 <strong>Settlement not ready</strong>
-                <p className="muted">Final settlement status appears here after office verifies the trip report.</p>
+                <p className="muted">Final settlement appears after office verifies the trip.</p>
               </div>
             )
           ) : null}

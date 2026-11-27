@@ -1,14 +1,18 @@
-import { useState } from "react";
-import { api } from "../api";
+import { useEffect, useState } from "react";
+import { api, openApiFile, pickList } from "../api";
 import { endpoints } from "../api/endpoints";
 import { useAuth } from "../auth";
-import { Banner, Field, FormActions, FormLegend } from "../components/ui";
+import { Banner, Field, FormActions, FormLegend, StatusPill } from "../components/ui";
 import { blankIssues, formatDate, hasIssues, roleLabel } from "../lib";
 import { useToast } from "../toast";
 
 export default function MobileProfile() {
   const { user, refreshUser } = useAuth();
   const toast = useToast();
+  const [profile, setProfile] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -18,6 +22,30 @@ export default function MobileProfile() {
     new_password: "",
     confirm: "",
   });
+
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    setLoadError("");
+    api(endpoints.mobileMe)
+      .then((data) => {
+        if (!live) return;
+        setProfile(data.profile || null);
+        setDocuments(pickList(data, "documents", "rows"));
+      })
+      .catch((err) => {
+        if (!live) return;
+        setLoadError(err.message || "Could not load profile");
+        setProfile(null);
+        setDocuments([]);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const set = (key) => (event) => {
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -64,39 +92,81 @@ export default function MobileProfile() {
     }
   };
 
+  const display = profile || user || {};
+
   return (
     <section className="mobile-page stack">
       <div className="mobile-page-head">
         <h1>Profile</h1>
-        <p className="page-sub">Your field account.</p>
+        <p className="page-sub">Your account and permitted documents.</p>
       </div>
+
+      <Banner>{loadError}</Banner>
+      {loading ? <p className="muted">Loading profile…</p> : null}
 
       <div className="mobile-detail-card">
         <div className="mobile-detail-row">
           <span>Name</span>
-          <strong>{user?.name || "—"}</strong>
+          <strong>{display.name || "—"}</strong>
         </div>
         <div className="mobile-detail-row">
           <span>Type</span>
-          <strong>{roleLabel(user?.user_type)}</strong>
+          <strong>{roleLabel(display.user_type || user?.user_type)}</strong>
         </div>
         <div className="mobile-detail-row">
           <span>Mobile</span>
-          <strong>{user?.mobile || "—"}</strong>
+          <strong>{display.mobile || "—"}</strong>
         </div>
         <div className="mobile-detail-row">
           <span>Email</span>
-          <strong>{user?.email || "—"}</strong>
+          <strong>{display.email || "—"}</strong>
         </div>
+        {display.license_number ? (
+          <div className="mobile-detail-row">
+            <span>License</span>
+            <strong>{display.license_number}</strong>
+          </div>
+        ) : null}
         <div className="mobile-detail-row">
           <span>Last login</span>
           <strong>{formatDate(user?.last_login_at)}</strong>
         </div>
       </div>
 
-      <p className="muted">
-        Personal documents (DL, Aadhaar, PAN) are held by office. Contact admin for copies.
-      </p>
+      <div className="mobile-expense-panel">
+        <h2>My documents</h2>
+        {!loading && documents.length === 0 ? (
+          <p className="muted">No documents shared with your account yet.</p>
+        ) : (
+          <ul className="mobile-trip-list">
+            {documents.map((doc) => (
+              <li key={doc.id || `${doc.document_type}-${doc.document_number}`}>
+                <div className="mobile-trip-card">
+                  <div>
+                    <strong>{doc.document_type || "Document"}</strong>
+                    <small>
+                      {doc.document_number || "—"}
+                      {doc.expiry_date ? ` · Exp ${formatDate(doc.expiry_date)}` : ""}
+                    </small>
+                  </div>
+                  <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                    <StatusPill value={doc.verification_status || doc.status || "—"} />
+                    {doc.document_url ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost table-action"
+                        onClick={() => openApiFile(doc.document_url).catch((err) => toast(err.message))}
+                      >
+                        Open
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {!showPassword ? (
         <button type="button" className="btn btn-primary" onClick={() => setShowPassword(true)}>
